@@ -10,14 +10,14 @@ import { authMiddleware, signToken } from './auth.js';
 dotenv.config();
 
 const app = express();
-const port = Number(process.env.API_PORT || 4000);
-const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const port = Number(process.env.PORT || process.env.API_PORT || 4000);
+const clientOrigin = process.env.CLIENT_ORIGIN || '';
 const isProduction = process.env.NODE_ENV === 'production';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.resolve(__dirname, '..', 'dist');
 
-app.use(cors({ origin: clientOrigin, credentials: false }));
+app.use(clientOrigin ? cors({ origin: clientOrigin, credentials: false }) : cors());
 app.use(express.json());
 
 if (isProduction) {

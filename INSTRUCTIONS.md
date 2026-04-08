@@ -155,12 +155,20 @@ Seed/default shape is defined in src/utils/schema.js (SEED_STATE).
 - The auth token is stored in browser localStorage under a token key.
 - Theme preference remains browser-local.
 - The API uses `DATABASE_URL` and `JWT_SECRET` from `.env`.
+- The server honors `PORT` first, then `API_PORT`, so production builders can inject their own runtime port.
+- `CLIENT_ORIGIN` is optional for same-origin production deployments.
 
 ### Backend run modes
 
 - Development API only: `npm run api`
 - Full development stack: `npm run dev:full`
 - Production server after frontend build: `npm start`
+
+### Production builder guidance
+
+- Use the repo `Dockerfile` as the production builder when the platform supports it.
+- The Docker image builds the frontend and serves both the UI and API from the same Express process.
+- If a hosting platform only allows a static publish directory, `dist/` is the frontend output, but you will still need a separate backend service.
 
 ### Persistence behavior
 
@@ -287,6 +295,7 @@ Cycle mapping data is stored in state.cyclePlans:
 - User data is scoped by authenticated user ID in API queries.
 - The production server serves the built frontend from `dist/` and the API from the same process.
 - The app now uses PostgreSQL as the source of truth for signed-in user state.
+- Production containers should set `PORT` if the platform provides one; otherwise the server falls back to `API_PORT`.
 
 ## 11. Authentication and onboarding behavior
 

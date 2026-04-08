@@ -4,6 +4,8 @@ Lifestyle OS is a single-page React application for planning, execution, and dai
 
 This version is no longer localStorage-only. It uses a PostgreSQL-backed API with email/password authentication, user-scoped data, optimistic updates, and a lightweight polling-based refresh loop for cross-session sync.
 
+For production deployment, use the included [Dockerfile](Dockerfile). It builds the frontend and runs the Express API in one container, which is the simplest production path for this app.
+
 ## Features
 
 - Daily briefing dashboard for workout and meal direction
@@ -104,6 +106,18 @@ npm run dev
 
 ## Production Deployment
 
+### Recommended builder
+
+Use **Dockerfile** as the production builder.
+
+Why:
+
+- The app needs both the frontend bundle and the backend API.
+- The Dockerfile builds `dist/` and serves it from the same Express process as `/api`.
+- This avoids mismatched hostnames or separate static/API deployments.
+
+If your platform requires a publish directory only, use `dist/` for the frontend build, but you will still need a separate API service. For this repository, Dockerfile is the production-ready path.
+
 ### 1. Build the frontend
 
 ```bash
@@ -130,11 +144,26 @@ Use real values for:
 
 - `DATABASE_URL`
 - `JWT_SECRET`
-- `CLIENT_ORIGIN`
-- `API_PORT`
-- `VITE_API_URL` during build time if the API is hosted separately
+ - `CLIENT_ORIGIN` (optional if the frontend and API are same-origin)
+- `API_PORT` or `PORT` depending on your host
+- `VITE_API_URL` only if the API is hosted separately
 
-If the frontend and backend are hosted on the same origin, set `VITE_API_URL` to the same server URL plus `/api`.
+If the frontend and backend are hosted on the same origin, you can leave `VITE_API_URL` unset and the browser client will use `/api`.
+
+### 4. Docker build example
+
+```bash
+docker build -t lifestyle-os .
+docker run -p 8080:8080 \
+	-e DATABASE_URL="postgresql://..." \
+	-e JWT_SECRET="..." \
+	-e CLIENT_ORIGIN="http://localhost:8080" \
+	lifestyle-os
+```
+
+The container listens on `PORT=8080` by default. Most builders can override that with their own runtime port mapping.
+
+If you serve the frontend and API from the same origin, you can omit `CLIENT_ORIGIN` entirely.
 
 ## Database Setup
 
