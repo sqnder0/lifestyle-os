@@ -147,6 +147,7 @@ Use real values for:
  - `CLIENT_ORIGIN` (optional if the frontend and API are same-origin)
 - `API_PORT` or `PORT` depending on your host
 - `VITE_API_URL` only if the API is hosted separately
+- `DATABASE_SSL=true` only if your PostgreSQL server requires TLS
 
 If the frontend and backend are hosted on the same origin, you can leave `VITE_API_URL` unset and the browser client will use `/api`.
 
@@ -184,6 +185,7 @@ The provided schema is intentionally compact and production-friendly for the cur
 - All user data is filtered by `user_id` on the API side.
 - `cycle_templates` stores workout and meal mappings per week/day.
 - For the current phase, the app uses API-level authorization rather than PostgreSQL RLS.
+- SSL is disabled by default; enable it only for managed databases that require TLS.
 
 ## Authentication Flow
 

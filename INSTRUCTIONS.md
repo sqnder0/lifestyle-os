@@ -157,6 +157,7 @@ Seed/default shape is defined in src/utils/schema.js (SEED_STATE).
 - The API uses `DATABASE_URL` and `JWT_SECRET` from `.env`.
 - The server honors `PORT` first, then `API_PORT`, so production builders can inject their own runtime port.
 - `CLIENT_ORIGIN` is optional for same-origin production deployments.
+- Enable `DATABASE_SSL=true` only when the Postgres server requires TLS.
 
 ### Backend run modes
 
@@ -330,6 +331,7 @@ If onboarding appears repeatedly, verify the `profiles` row is being updated in 
 
 - localStorage is still used for auth token storage and theme preference, so browser storage can still affect sign-in behavior.
 - The API depends on PostgreSQL being reachable and initialized.
+- SSL is off by default; turn it on with `DATABASE_SSL=true` only for managed TLS-enabled databases.
 - Full reset in DataPortal or sidebar reset now only resets the current app state; production data remains in PostgreSQL.
 - If you later re-enable import/export, validate structure before sending it to the API.
 
