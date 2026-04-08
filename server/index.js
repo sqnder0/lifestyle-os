@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getClient, query } from './db.js';
@@ -16,6 +17,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.resolve(__dirname, '..', 'dist');
+const schemaPath = path.resolve(__dirname, 'sql', '001_phase7_core.sql');
 
 app.use(clientOrigin ? cors({ origin: clientOrigin, credentials: false }) : cors());
 app.use(express.json());
@@ -32,6 +34,26 @@ app.get('/api/health', async (_req, res) => {
     res.status(500).json({ ok: false, error: error.message });
   }
 });
+
+async function ensureSchema() {
+  const client = await getClient();
+  try {
+    await client.query('begin');
+    const schemaSql = await readFile(schemaPath, 'utf8');
+    await client.query(schemaSql);
+    await client.query('commit');
+    console.log('Database schema ready');
+  } catch (error) {
+    try {
+      await client.query('rollback');
+    } catch {
+      // ignore rollback errors when the transaction never started cleanly
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 app.post('/api/auth/signup', async (req, res) => {
   const { email, password, username = '' } = req.body || {};
@@ -197,7 +219,11 @@ app.put('/api/state', authMiddleware, async (req, res) => {
     await client.query('commit');
     return res.json({ ok: true });
   } catch (error) {
-    await client.query('rollback');
+    try {
+      await client.query('rollback');
+    } catch {
+      // ignore rollback errors
+    }
     return res.status(500).json({ error: error.message });
   } finally {
     client.release();
@@ -213,6 +239,14 @@ if (isProduction) {
   });
 }
 
-app.listen(port, () => {
-  console.log(`API running on http://localhost:${port}`);
+async function main() {
+  await ensureSchema();
+  app.listen(port, () => {
+    console.log(`API running on http://localhost:${port}`);
+  });
+}
+
+main().catch((error) => {
+  console.error('Startup failed:', error);
+  process.exit(1);
 });

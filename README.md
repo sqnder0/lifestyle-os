@@ -170,6 +170,8 @@ If you serve the frontend and API from the same origin, you can omit `CLIENT_ORI
 
 The provided schema is intentionally compact and production-friendly for the current phase.
 
+The API now runs the schema file automatically on startup, so the tables will be created if they do not already exist. You still need a valid PostgreSQL connection string and database permissions that allow table creation.
+
 ### Tables
 
 - `auth_users`

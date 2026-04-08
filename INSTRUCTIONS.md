@@ -297,6 +297,7 @@ Cycle mapping data is stored in state.cyclePlans:
 - The production server serves the built frontend from `dist/` and the API from the same process.
 - The app now uses PostgreSQL as the source of truth for signed-in user state.
 - Production containers should set `PORT` if the platform provides one; otherwise the server falls back to `API_PORT`.
+- The server applies the PostgreSQL schema automatically at startup if tables are missing.
 
 ## 11. Authentication and onboarding behavior
 
