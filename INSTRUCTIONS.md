@@ -10,7 +10,7 @@ Lifestyle OS is a single-page React app that acts like a personal operating syst
 - Metrics, habits, journaling, CRM, principles, and weekly review workflows
 - Vitality strategy routing (workout routines + meal protocols)
 
-The app is local-first and persists all state in browser localStorage.
+The app is user-first and persists signed-in user data in PostgreSQL through a small Express API. Theme and token preferences remain browser-local where appropriate.
 
 ## 2. Stack and runtime
 
@@ -19,7 +19,7 @@ The app is local-first and persists all state in browser localStorage.
 - Styling: Tailwind CSS + CSS variable design tokens
 - Icons: lucide-react
 - State: React Context + custom hooks
-- Persistence: browser localStorage
+- Persistence: PostgreSQL-backed API for signed-in data, browser-local storage for auth token/theme
 
 Core dependencies are defined in package.json.
 
@@ -46,6 +46,24 @@ npm run dev
 
 ```bash
 npm run build
+```
+
+### Start backend API
+
+```bash
+npm run api
+```
+
+### Start full app in development
+
+```bash
+npm run dev:full
+```
+
+### Start production server after build
+
+```bash
+npm start
 ```
 
 ### Preview production build
@@ -131,22 +149,29 @@ Seed/default shape is defined in src/utils/schema.js (SEED_STATE).
 
 ## 6. Persistence and data lifecycle
 
-### Storage key
+### Auth and persistence
 
-The app persists under localStorage key:
+- Signed-in data is fetched from and written to PostgreSQL through the Express API.
+- The auth token is stored in browser localStorage under a token key.
+- Theme preference remains browser-local.
+- The API uses `DATABASE_URL` and `JWT_SECRET` from `.env`.
 
-- lifestyle-os-v5
+### Backend run modes
+
+- Development API only: `npm run api`
+- Full development stack: `npm run dev:full`
+- Production server after frontend build: `npm start`
 
 ### Persistence behavior
 
-- useLocalStorage initializes from localStorage or falls back to SEED_STATE.
-- Writes are debounced (~100ms).
-- Storage errors are caught and ignored.
-- Cross-tab sync is handled via the storage event.
+- `useApiAuth` bootstraps the current user session from a browser token.
+- `usePostgresSync` hydrates state from the API after login.
+- Writes are optimistic and flushed to the API in the background.
+- The sync hook periodically refreshes from the server to pick up external changes.
 
 ### Important merge behavior
 
-When loading stored data, top-level keys from initialValue are merged in so new schema keys can appear after updates.
+When loading API state, the app merges the server payload into the current seed shape so schema additions remain safe across releases.
 
 ## 7. Styling and theme system
 
@@ -256,20 +281,29 @@ Cycle mapping data is stored in state.cyclePlans:
 - workoutsByDay (Mon-Sun -> workout id)
 - mealProtocolId (per week)
 
-## 11. Onboarding behavior
+### Backend migration notes (Phase 7)
 
-AppShell checks state.settings.onboarded.
+- Authentication is email/password through the Express API.
+- User data is scoped by authenticated user ID in API queries.
+- The production server serves the built frontend from `dist/` and the API from the same process.
+- The app now uses PostgreSQL as the source of truth for signed-in user state.
 
+## 11. Authentication and onboarding behavior
+
+App startup checks for a valid auth session first.
+
+- If no session exists, the Login/Signup screen is shown.
+- Once authenticated, AppShell checks `state.settings.onboarded`.
 - If not true, OnboardingFlow is shown.
-- On completion, onboarding should persist user setup and mark onboarded true.
+- On completion, onboarding persists user setup to the API and marks onboarded true.
 
-If onboarding appears repeatedly, verify state.settings.onboarded is being saved to localStorage.
+If onboarding appears repeatedly, verify the `profiles` row is being updated in PostgreSQL.
 
 ## 12. How to add a new module
 
 1. Create a new component in src/components/modules.
 2. Register it in src/App.jsx inside CORE_MODULES or SYSTEM_MODULES.
-3. Add any required state/actions in OSContext if it mutates shared state.
+4. Add any required state/actions in OSContext if it mutates shared state.
 4. Extend SEED_STATE in src/utils/schema.js for new persisted data.
 5. If needed, add selectors in OSContext.
 6. Add command palette entries if discoverability is needed.
@@ -281,14 +315,14 @@ If onboarding appears repeatedly, verify state.settings.onboarded is being saved
 2. Make all reads null-safe for older saved payloads.
 3. Add mutation functions in OSContext.
 4. Prefer immutable updates and preserve existing object keys.
-5. Test reload, tab sync, and import/export in DataPortal.
+5. Test login, reload, sync refresh, and API persistence.
 
 ## 14. Operational notes and risks
 
-- localStorage can fail in private mode or due to quota limits.
-- useLocalStorage catches failures; data may not persist if browser storage is blocked.
-- Full reset in DataPortal or sidebar reset restores seed state.
-- Importing malformed JSON can break runtime assumptions; validate imported structure before use if extending DataPortal.
+- localStorage is still used for auth token storage and theme preference, so browser storage can still affect sign-in behavior.
+- The API depends on PostgreSQL being reachable and initialized.
+- Full reset in DataPortal or sidebar reset now only resets the current app state; production data remains in PostgreSQL.
+- If you later re-enable import/export, validate structure before sending it to the API.
 
 ## 15. Developer workflow recommendations
 
@@ -296,7 +330,7 @@ If onboarding appears repeatedly, verify state.settings.onboarded is being saved
 
 - Keep all state writes inside OSContext actions.
 - Avoid direct mutation in module components.
-- Update seed schema and selectors together.
+- Update seed schema, API mappings, and selectors together.
 
 ### When editing UI
 
@@ -310,10 +344,17 @@ If onboarding appears repeatedly, verify state.settings.onboarded is being saved
 - Keep date handling local-time based and deterministic.
 - Add tests for week transitions and override precedence.
 
+### When editing backend or auth
+
+- Keep all user-scoped data filtered by the authenticated user ID.
+- Store passwords hashed with bcrypt.
+- Serve the frontend from Express in production after running `npm run build`.
+
 ## 16. Suggested test checklist (manual)
 
-- App loads with seed data on first run.
-- Reload keeps changes from previous session.
+- App loads to the login screen when unauthenticated.
+- Login and signup both create authenticated sessions.
+- Reload keeps the session and shows synced data.
 - cmd+k opens command palette and navigation works.
 - Mobile drawer and bottom navigation are usable.
 - Theme toggle updates html.dark and persists.
@@ -323,14 +364,14 @@ If onboarding appears repeatedly, verify state.settings.onboarded is being saved
 - Dashboard shows: Today's Session + workout note + weekly meal protocol.
 - If energy is below threshold and scheduled routine is High intensity, dashboard shows recovery protocol instead.
 - Reference module lists workouts, meal protocols, recovery protocols, and pantry essentials.
-- Data export creates valid JSON; import restores state.
-- Reset returns app to seed defaults.
+- API writes persist after refresh.
+- Sign out returns to the login screen.
 
 ## 17. Build and deployment notes
 
-- Vite build output is static and can be hosted on any static hosting platform.
-- No backend or server runtime is required for core functionality.
-- Since data is localStorage-based, state is browser/device specific unless export/import is used.
+- Vite build output is served by the Express server in production.
+- The backend API and PostgreSQL database are required for authenticated use.
+- The production entrypoint is `npm start` after `npm run build`.
 
 ## 18. Quick file map for key maintenance points
 
@@ -338,11 +379,14 @@ If onboarding appears repeatedly, verify state.settings.onboarded is being saved
 - src/context/OSContext.jsx: single source of truth for state and mutations
 - src/utils/schema.js: data factories, constants, seed defaults
 - src/utils/cycleEngine.js: cycle week/date/block resolution utilities + daily physical briefing resolver
-- src/hooks/useLocalStorage.js: persistence and cross-tab sync
+- src/hooks/useApiAuth.js: login/signup/session bootstrap
+- src/hooks/usePostgresSync.js: API hydration and optimistic syncing
 - src/index.css: design tokens, utility aliases, animation definitions
 - src/components/modules/TemplateEditor.jsx: cycle events + vitality mapping editor
 - src/components/modules/ReferenceModule.jsx: static strategy references (workouts, meals, pantry)
 - src/components/modules/DashboardModule.jsx: daily briefing surface
+- server/index.js: PostgreSQL API and production static server
+- server/sql/001_phase7_core.sql: database schema
 
 ---
 

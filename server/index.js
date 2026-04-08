@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getClient, query } from './db.js';
 import { authMiddleware, signToken } from './auth.js';
 
@@ -10,9 +12,17 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.API_PORT || 4000);
 const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const isProduction = process.env.NODE_ENV === 'production';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.resolve(__dirname, '..', 'dist');
 
 app.use(cors({ origin: clientOrigin, credentials: false }));
 app.use(express.json());
+
+if (isProduction) {
+  app.use(express.static(distPath));
+}
 
 app.get('/api/health', async (_req, res) => {
   try {
@@ -193,6 +203,15 @@ app.put('/api/state', authMiddleware, async (req, res) => {
     client.release();
   }
 });
+
+if (isProduction) {
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api')) {
+      return next();
+    }
+    return res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
 app.listen(port, () => {
   console.log(`API running on http://localhost:${port}`);
