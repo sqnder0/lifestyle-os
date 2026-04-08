@@ -1,0 +1,367 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LIFESTYLE OS — Design Token System
+   All colour references in components use these CSS variables.
+   Swapping :root → html.dark is the only mechanism needed for dark mode.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Surfaces ── */
+  --surface:         #ffffff;
+  --surface-raised:  #ffffff;
+  --surface-inset:   #f9f9f8;
+  --surface-page:    #f4f4f2;
+  --surface-overlay: rgba(0,0,0,0.04);
+
+  /* ── Borders ── */
+  --border:          rgba(0,0,0,0.08);
+  --border-strong:   rgba(0,0,0,0.16);
+
+  /* ── Text ── */
+  --text-primary:    #18181b;
+  --text-secondary:  #71717a;
+  --text-muted:      #a1a1aa;
+
+  /* ── Sidebar ── */
+  --sidebar-bg:            #ffffff;
+  --sidebar-active:        #18181b;
+  --sidebar-active-text:   #ffffff;
+
+  /* ── Semantic accents (same in both modes) ── */
+  --accent-indigo:  #6366f1;
+  --accent-emerald: #10b981;
+  --accent-amber:   #f59e0b;
+  --accent-red:     #ef4444;
+  --accent-sky:     #0ea5e9;
+  --accent-rose:    #f43f5e;
+  --accent-violet:  #8b5cf6;
+
+  /* ── Semantic fills (light) ── */
+  --fill-indigo:  rgba(99,102,241,0.08);
+  --fill-emerald: rgba(16,185,129,0.08);
+  --fill-amber:   rgba(245,158,11,0.08);
+  --fill-red:     rgba(239,68,68,0.08);
+  --fill-sky:     rgba(14,165,233,0.08);
+  --fill-rose:    rgba(244,63,94,0.08);
+
+  /* ── Status tints ── */
+  --status-todo:        rgba(161,161,170,0.10);
+  --status-todo-text:   #71717a;
+  --status-progress:    rgba(99,102,241,0.10);
+  --status-progress-text: #6366f1;
+  --status-done:        rgba(16,185,129,0.10);
+  --status-done-text:   #059669;
+  --status-blocked:     rgba(239,68,68,0.10);
+  --status-blocked-text:#dc2626;
+
+  /* ── Scrollbar ── */
+  --scrollbar-thumb: rgba(0,0,0,0.10);
+
+  /* ── Misc ── */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --radius-sm:  0.5rem;
+  --radius-md:  0.75rem;
+  --radius-lg:  1rem;
+  --radius-xl:  1.25rem;
+  --radius-2xl: 1.5rem;
+}
+
+/* ── Dark mode ─────────────────────────────────────────────────────────── */
+html.dark {
+  --surface:         #1c1c1e;
+  --surface-raised:  #242428;
+  --surface-inset:   #141416;
+  --surface-page:    #111113;
+  --surface-overlay: rgba(255,255,255,0.04);
+
+  --border:          rgba(255,255,255,0.08);
+  --border-strong:   rgba(255,255,255,0.16);
+
+  --text-primary:    #f4f4f5;
+  --text-secondary:  #a1a1aa;
+  --text-muted:      #52525b;
+
+  --sidebar-bg:          #1c1c1e;
+  --sidebar-active:      #f4f4f5;
+  --sidebar-active-text: #18181b;
+
+  --fill-indigo:  rgba(99,102,241,0.14);
+  --fill-emerald: rgba(16,185,129,0.12);
+  --fill-amber:   rgba(245,158,11,0.12);
+  --fill-red:     rgba(239,68,68,0.12);
+  --fill-sky:     rgba(14,165,233,0.12);
+  --fill-rose:    rgba(244,63,94,0.12);
+
+  --status-todo:        rgba(161,161,170,0.14);
+  --status-progress:    rgba(99,102,241,0.14);
+  --status-done:        rgba(16,185,129,0.12);
+  --status-blocked:     rgba(239,68,68,0.13);
+
+  --scrollbar-thumb: rgba(255,255,255,0.10);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BASE
+   ══════════════════════════════════════════════════════════════════════════ */
+@layer base {
+  html {
+    font-family: 'Inter', 'SF Pro Text', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--surface-page);
+    color: var(--text-primary);
+  }
+
+  /* Smooth color transitions when switching modes */
+  *, *::before, *::after {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+  /* Don't animate transforms (breaks animations) */
+  *:where([class*="animate-"], [class*="transition-"]) {
+    transition-property: none;
+  }
+
+  /* Custom scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+  *::-webkit-scrollbar       { width: 4px; height: 4px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 99px;
+  }
+
+  /* Keyboard focus ring — skip mouse focus */
+  *:focus-visible {
+    outline: 2px solid var(--accent-indigo);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Mobile tap highlight */
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Smooth font on inputs in dark mode */
+  input, textarea, select {
+    color: var(--text-primary);
+    background-color: var(--surface-raised);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   UTILITY ALIASES
+   These are the bridge between CSS variables and Tailwind-style classnames.
+   Components use these instead of hardcoded zinc/white classes.
+   ══════════════════════════════════════════════════════════════════════════ */
+@layer utilities {
+
+  /* ── Surfaces ── */
+  .bg-surface        { background-color: var(--surface); }
+  .bg-surface-raised { background-color: var(--surface-raised); }
+  .bg-surface-inset  { background-color: var(--surface-inset); }
+  .bg-page           { background-color: var(--surface-page); }
+  .bg-overlay        { background-color: var(--surface-overlay); }
+
+  /* ── Borders ── */
+  .border-token        { border-color: var(--border); }
+  .border-token-strong { border-color: var(--border-strong); }
+
+  /* ── Text ── */
+  .text-primary   { color: var(--text-primary);   }
+  .text-secondary { color: var(--text-secondary); }
+  .text-muted     { color: var(--text-muted);     }
+
+  /* ── Semantic fills ── */
+  .bg-fill-indigo  { background-color: var(--fill-indigo); }
+  .bg-fill-emerald { background-color: var(--fill-emerald); }
+  .bg-fill-amber   { background-color: var(--fill-amber); }
+  .bg-fill-red     { background-color: var(--fill-red); }
+  .bg-fill-sky     { background-color: var(--fill-sky); }
+  .bg-fill-rose    { background-color: var(--fill-rose); }
+
+  /* ── Card ── */
+  .card {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+  }
+  .card-sm {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .card-inset {
+    background-color: var(--surface-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  /* ── Inputs ── */
+  .input-base {
+    background-color: var(--surface-raised);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    transition: border-color 150ms;
+    outline: none;
+    width: 100%;
+  }
+  .input-base::placeholder { color: var(--text-muted); }
+  .input-base:focus { border-color: var(--border-strong); }
+
+  .textarea-base {
+    background-color: var(--surface-raised);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    resize: none;
+    outline: none;
+    width: 100%;
+    transition: border-color 150ms;
+  }
+  .textarea-base::placeholder { color: var(--text-muted); }
+  .textarea-base:focus { border-color: var(--border-strong); }
+
+  /* ── Shadows ── */
+  .shadow-token    { box-shadow: var(--shadow-sm); }
+  .shadow-token-md { box-shadow: var(--shadow-md); }
+
+  /* ── Sidebar active ── */
+  .sidebar-active {
+    background-color: var(--sidebar-active);
+    color: var(--sidebar-active-text);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   COMPONENT PATTERNS
+   ══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+
+  /* ── Pill / status badge ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.625rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 99px;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  /* ── Tab switcher row ── */
+  .tab-bar {
+    display: flex;
+    gap: 0.25rem;
+    background-color: var(--surface-inset);
+    border-radius: var(--radius-lg);
+    padding: 0.25rem;
+    align-self: flex-start;
+  }
+  .tab-btn {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--radius-md);
+    transition: all 150ms;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: var(--text-secondary); }
+  .tab-btn.active {
+    background-color: var(--surface);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* ── Section heading ── */
+  .section-label {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MOBILE SPECIFICS
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Safe-area inset for iOS home indicator */
+.bottom-nav {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 4px);
+}
+
+/* Prevent scroll-bounce on iOS behind bottom nav */
+@supports (-webkit-touch-callout: none) {
+  body { overscroll-behavior: none; }
+}
+
+/* Larger hit targets on mobile */
+@media (max-width: 768px) {
+  button { min-height: 36px; }
+  input, select, textarea { font-size: 16px; } /* Prevents iOS zoom */
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Page enter — triggered by key change on module switch */
+.page-enter {
+  animation: pageIn 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* Fade in for cards / staggered lists */
+.fade-in {
+  animation: fadeIn 200ms ease both;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Flash confirmation (quick capture save) */
+@keyframes flashGreen {
+  0%   { border-color: var(--accent-emerald); box-shadow: 0 0 0 3px rgba(16,185,129,0.15); }
+  100% { border-color: var(--border); box-shadow: none; }
+}
+.flash-confirm {
+  animation: flashGreen 600ms ease-out both;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PRINT (Weekly Review export)
+   ══════════════════════════════════════════════════════════════════════════ */
+@media print {
+  .no-print, nav, aside, header, .bottom-nav { display: none !important; }
+  main { padding: 0 !important; }
+  .card, .card-sm { box-shadow: none; border: 1px solid #ddd; }
+}

@@ -1,0 +1,89 @@
+-- Phase 7 core schema for PostgreSQL-backed Lifestyle OS
+
+create extension if not exists pgcrypto;
+
+create table if not exists auth_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists profiles (
+  id uuid primary key references auth_users(id) on delete cascade,
+  username text,
+  settings jsonb not null default '{}'::jsonb,
+  onboarded boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists capture_inbox (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth_users(id) on delete cascade,
+  content text not null,
+  created_at timestamptz not null default now(),
+  status text not null default 'open' check (status in ('open', 'processed'))
+);
+create index if not exists capture_inbox_user_created_idx on capture_inbox(user_id, created_at desc);
+
+create table if not exists projects (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth_users(id) on delete cascade,
+  title text not null,
+  status text not null default 'Active' check (status in ('Active', 'Paused', 'Completed', 'Archived')),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists projects_user_status_idx on projects(user_id, status);
+
+create table if not exists metrics (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth_users(id) on delete cascade,
+  date date not null,
+  energy int,
+  sleep numeric(4,1),
+  mood int,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(user_id, date)
+);
+create index if not exists metrics_user_date_idx on metrics(user_id, date desc);
+
+create table if not exists cycle_templates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth_users(id) on delete cascade,
+  week_type char(1) not null check (week_type in ('A', 'B', 'C')),
+  day_of_week text not null check (day_of_week in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')),
+  workout_id text,
+  meal_protocol_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(user_id, week_type, day_of_week)
+);
+create index if not exists cycle_templates_user_week_idx on cycle_templates(user_id, week_type);
+
+create or replace function set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists profiles_set_updated_at on profiles;
+create trigger profiles_set_updated_at before update on profiles
+for each row execute procedure set_updated_at();
+
+drop trigger if exists projects_set_updated_at on projects;
+create trigger projects_set_updated_at before update on projects
+for each row execute procedure set_updated_at();
+
+drop trigger if exists metrics_set_updated_at on metrics;
+create trigger metrics_set_updated_at before update on metrics
+for each row execute procedure set_updated_at();
+
+drop trigger if exists cycle_templates_set_updated_at on cycle_templates;
+create trigger cycle_templates_set_updated_at before update on cycle_templates
+for each row execute procedure set_updated_at();

@@ -1,0 +1,26 @@
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+
+async function request(path, { method = 'GET', token, body } = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new Error(payload.error || `Request failed (${res.status})`);
+  }
+
+  return res.json();
+}
+
+export const api = {
+  baseUrl: API_BASE,
+  get: (path, token) => request(path, { method: 'GET', token }),
+  post: (path, body, token) => request(path, { method: 'POST', body, token }),
+  put: (path, body, token) => request(path, { method: 'PUT', body, token }),
+};
