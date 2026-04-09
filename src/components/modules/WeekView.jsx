@@ -32,11 +32,11 @@ function DayColumn({ dayInfo, events, override, onSelectDay, isSelected }) {
       <div className="flex items-center justify-between px-0.5">
         <div>
           <p className={`text-[11px] font-semibold uppercase tracking-widest
-            ${isSelected ? 'text-[var(--text-muted)]' : isToday ? 'text-indigo-500' : 'text-[var(--text-muted)]'}`}>
+            ${isSelected ? 'text-[var(--sidebar-active-text)]/80' : isToday ? 'text-indigo-500' : 'text-[var(--text-muted)]'}`}>
             {dayInfo.label}
           </p>
           <p className={`text-base font-bold leading-none mt-0.5
-            ${isSelected ? 'text-white' : isToday ? 'text-indigo-700' : 'text-[var(--text-primary)]'}`}>
+            ${isSelected ? 'text-[var(--sidebar-active-text)]' : isToday ? 'text-indigo-700' : 'text-[var(--text-primary)]'}`}>
             {parseKey(dayInfo.key).getDate()}
           </p>
         </div>
@@ -63,11 +63,11 @@ function DayColumn({ dayInfo, events, override, onSelectDay, isSelected }) {
 
       {/* Events */}
       {cancelled ? (
-        <div className={`text-[10px] text-center py-3 opacity-40 ${isSelected ? 'text-white' : 'text-[var(--text-secondary)]'}`}>
+        <div className={`text-[10px] text-center py-3 opacity-60 ${isSelected ? 'text-[var(--sidebar-active-text)]' : 'text-[var(--text-secondary)]'}`}>
           Day cancelled
         </div>
       ) : events.length === 0 ? (
-        <div className={`text-[10px] text-center py-3 opacity-30 ${isSelected ? 'text-white' : 'text-[var(--text-muted)]'}`}>
+        <div className={`text-[10px] text-center py-3 opacity-60 ${isSelected ? 'text-[var(--sidebar-active-text)]' : 'text-[var(--text-muted)]'}`}>
           Free
         </div>
       ) : (
@@ -75,7 +75,7 @@ function DayColumn({ dayInfo, events, override, onSelectDay, isSelected }) {
           {events.slice(0, 4).map((ev) => (
             isSelected ? (
               /* White-on-dark chip when selected */
-              <div key={ev.id} className="text-[10px] bg-white/10 rounded-lg px-2 py-1 truncate text-white/90">
+              <div key={ev.id} className="text-[10px] bg-black/10 rounded-lg px-2 py-1 truncate text-[var(--sidebar-active-text)]">
                 {ev.label}
               </div>
             ) : (
@@ -83,7 +83,7 @@ function DayColumn({ dayInfo, events, override, onSelectDay, isSelected }) {
             )
           ))}
           {events.length > 4 && (
-            <p className={`text-[10px] pl-1 opacity-60 ${isSelected ? 'text-white' : 'text-[var(--text-muted)]'}`}>
+            <p className={`text-[10px] pl-1 opacity-75 ${isSelected ? 'text-[var(--sidebar-active-text)]' : 'text-[var(--text-muted)]'}`}>
               +{events.length - 4} more
             </p>
           )}

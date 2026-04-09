@@ -20,7 +20,7 @@ function mapFromServer(seedState, payload) {
 
   const profile = payload.profile ?? null;
   if (profile) {
-    const { reference, habits, ...profileSettings } = profile.settings ?? {};
+    const { reference, habits, principles, ...profileSettings } = profile.settings ?? {};
     next.settings = {
       ...next.settings,
       ...profileSettings,
@@ -29,6 +29,7 @@ function mapFromServer(seedState, payload) {
     };
     next.reference = reference ?? next.reference ?? DEFAULT_REFERENCE;
     next.habits = habits ?? next.habits;
+    next.principles = principles ?? next.principles;
   }
 
   if (Array.isArray(payload.captureInbox)) {
@@ -85,6 +86,7 @@ function toServerPayload(state) {
       ...(state.settings ?? {}),
       reference: state.reference ?? DEFAULT_REFERENCE,
       habits: state.habits ?? {},
+      principles: state.principles ?? {},
     },
   };
 

@@ -4,14 +4,6 @@ import QuickCapture from './QuickCapture';
 import { todayKey } from '../../utils/schema';
 import { getCycleLetter, parseKey } from '../../utils/cycleEngine';
 
-const MOODS = [
-  { value: 1, emoji: '😖' },
-  { value: 2, emoji: '😕' },
-  { value: 3, emoji: '😐' },
-  { value: 4, emoji: '🙂' },
-  { value: 5, emoji: '😄' },
-];
-
 function greetingForHour(hour) {
   if (hour < 12) return 'Good Morning';
   if (hour < 17) return 'Good Afternoon';
@@ -150,14 +142,14 @@ function QuickLogs() {
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-[var(--text-secondary)]">Mood</span>
           <div className="flex gap-1">
-            {MOODS.map((mood) => (
+            {Array.from({ length: 10 }, (_, idx) => idx + 1).map((value) => (
               <button
-                key={`mood-${mood.value}`}
-                onClick={() => logToday({ mood: mood.value })}
-                className={`w-8 h-8 text-xs rounded-md border transition-colors ${today.mood === mood.value ? 'bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] border-[var(--sidebar-active)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-inset)]'}`}
-                title={`Mood ${mood.value}`}
+                key={`mood-${value}`}
+                onClick={() => logToday({ mood: value })}
+                className={`w-6 h-6 text-[10px] rounded-md border transition-colors ${today.mood === value ? 'bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] border-[var(--sidebar-active)]' : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--surface-inset)]'}`}
+                title={`Mood ${value}`}
               >
-                {mood.emoji}
+                {value}
               </button>
             ))}
           </div>
