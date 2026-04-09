@@ -208,7 +208,15 @@ export const resolvePhysicalBriefing = (
   const recoveryProtocol = recoveryProtocols[0] ?? null;
 
   const isLowEnergy = energy != null && energy < energyThreshold;
-  const useRecovery = isLowEnergy && scheduledWorkout?.intensity === 'High' ? recoveryProtocol : null;
+  const workoutIntensityScore =
+    typeof scheduledWorkout?.intensity_score === 'number'
+      ? scheduledWorkout.intensity_score
+      : scheduledWorkout?.intensity === 'High'
+        ? 3
+        : scheduledWorkout?.intensity === 'Medium'
+          ? 2
+          : 1;
+  const useRecovery = isLowEnergy && workoutIntensityScore >= 3 ? recoveryProtocol : null;
 
   return {
     letter,

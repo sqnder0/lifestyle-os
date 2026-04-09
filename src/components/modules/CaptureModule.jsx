@@ -3,10 +3,7 @@ import { useOS } from '../../context/OSContext';
 import { formatRelative } from '../../utils/helpers';
 
 // ── Single capture row ────────────────────────────────────────────────────
-function CaptureRow({ item, projects, onProcess, onPromote, onDelete }) {
-  const [showPromote, setShowPromote] = useState(false);
-  const [selectedPid, setSelectedPid] = useState('');
-  const activeProjects = Object.values(projects).filter((p) => p.status === 'Active');
+function CaptureRow({ item, onProcess, onDelete }) {
 
   return (
     <div className={`group relative flex items-start gap-3 px-4 py-3 rounded-xl border transition-all
@@ -32,46 +29,11 @@ function CaptureRow({ item, projects, onProcess, onPromote, onDelete }) {
           {item.text}
         </p>
         <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{formatRelative(item.createdAt)}</p>
-
-        {/* Promote picker */}
-        {showPromote && (
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <select
-              value={selectedPid}
-              onChange={(e) => setSelectedPid(e.target.value)}
-              className="text-xs border border-[var(--border)] rounded-lg px-2 py-1 bg-[var(--surface-raised)] focus:outline-none focus:ring-2 focus:ring-zinc-300"
-            >
-              <option value="">No project (orphan task)</option>
-              {activeProjects.map((p) => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => { onPromote(item.id, selectedPid || null); setShowPromote(false); }}
-              className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              → Create task
-            </button>
-            <button
-              onClick={() => setShowPromote(false)}
-              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-            >
-              cancel
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Actions */}
       {!item.processed && (
         <div className="hidden group-hover:flex items-center gap-1 shrink-0">
-          <button
-            onClick={() => setShowPromote((v) => !v)}
-            title="Promote to task"
-            className="text-[11px] px-2 py-1 rounded-lg bg-[var(--fill-indigo)] text-indigo-600 hover:bg-[var(--fill-indigo)] transition-colors font-medium"
-          >
-            → Task
-          </button>
           <button
             onClick={() => onDelete(item.id)}
             title="Delete"
@@ -96,12 +58,12 @@ function CaptureRow({ item, projects, onProcess, onPromote, onDelete }) {
 
 // ── CaptureModule ─────────────────────────────────────────────────────────
 export default function CaptureModule() {
-  const { state, addCapture, markCaptureProcessed, updateCapture, deleteCapture, promoteCapture } = useOS();
+  const { state, addCapture, updateCapture, deleteCapture } = useOS();
   const [input, setInput]   = useState('');
   const [filter, setFilter] = useState('inbox'); // inbox | processed | all
   const [flash, setFlash]   = useState(false);
 
-  const { capture, projects } = state;
+  const { capture = [] } = state;
 
   const commit = () => {
     const t = input.trim();
@@ -205,9 +167,7 @@ export default function CaptureModule() {
             <CaptureRow
               key={item.id}
               item={item}
-              projects={projects}
               onProcess={toggleProcessed}
-              onPromote={promoteCapture}
               onDelete={deleteCapture}
             />
           ))

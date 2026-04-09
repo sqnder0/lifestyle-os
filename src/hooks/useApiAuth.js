@@ -37,8 +37,8 @@ export function useApiAuth() {
     };
   }, [token]);
 
-  const signUp = useCallback(async ({ email, password, username }) => {
-    const data = await api.post('/auth/signup', { email, password, username });
+  const signUp = useCallback(async ({ email, password }) => {
+    const data = await api.post('/auth/signup', { email, password });
     localStorage.setItem(TOKEN_KEY, data.token);
     setToken(data.token);
     setUser(data.user);

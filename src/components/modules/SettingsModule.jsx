@@ -13,7 +13,6 @@ export const DEFAULT_SETTINGS = {
   focusBlockMins: 90,
   showStreakBadges: true,
   compactSidebar:  false,
-  notifyOverdueCRM: true,
   notifyReviewReminder: true,
   notifyHabitStreak: true,
   firstDayOfWeek: 'Monday',
@@ -237,9 +236,6 @@ export default function SettingsModule() {
             <>
               <SettingRow label="Review reminder" sub={`Remind on ${settings.reviewDay} evenings`}>
                 <Toggle value={settings.notifyReviewReminder} onChange={v => set('notifyReviewReminder', v)} />
-              </SettingRow>
-              <SettingRow label="Overdue contacts" sub="Alert for CRM contacts > 30 days">
-                <Toggle value={settings.notifyOverdueCRM} onChange={v => set('notifyOverdueCRM', v)} />
               </SettingRow>
               <SettingRow label="Habit streaks" sub="Remind if no habits logged by evening">
                 <Toggle value={settings.notifyHabitStreak} onChange={v => set('notifyHabitStreak', v)} />

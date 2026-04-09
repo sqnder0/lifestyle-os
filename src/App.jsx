@@ -4,22 +4,17 @@ import CommandPalette from './components/modules/CommandPalette';
 import { OSProvider, useOS } from './context/OSContext';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useApiAuth } from './hooks/useApiAuth';
-import { api } from './lib/api';
+import { Settings as SettingsIcon } from 'lucide-react';
 
 // ── Module imports ─────────────────────────────────────────────────────────
 import DashboardModule    from './components/modules/DashboardModule';
 import CaptureModule      from './components/modules/CaptureModule';
 import CycleModule        from './components/modules/CycleModule';
-import ProjectsModule     from './components/modules/ProjectsModule';
 import MetricsModule      from './components/modules/MetricsModule';
-import CRMModule          from './components/modules/CRMModule';
-import ProjectEngine      from './components/modules/ProjectEngine';
 import PrinciplesModule   from './components/modules/PrinciplesModule';
 import WeeklyReviewModule from './components/modules/WeeklyReviewModule';
 import HabitsModule     from './components/modules/HabitsModule';
 import ReferenceModule  from './components/modules/ReferenceModule';
-import DataPortal      from './components/modules/DataPortal';
-import FocusTimer     from './components/modules/FocusTimer';
 import SettingsModule  from './components/modules/SettingsModule';
 import JournalModule   from './components/modules/JournalModule';
 import OnboardingFlow  from './components/modules/OnboardingFlow';
@@ -30,25 +25,22 @@ const CORE_MODULES = [
   { id: 'dashboard', label: 'Dashboard',  icon: '⌂',  Component: DashboardModule  },
   { id: 'capture',   label: 'Inbox',      icon: '↓',  Component: CaptureModule    },
   { id: 'cycles',    label: 'Cycles',     icon: '↻',  Component: CycleModule      },
-  { id: 'projects',  label: 'Projects',   icon: '▦',  Component: ProjectsModule   },
   { id: 'metrics',   label: 'Metrics',    icon: '◈',  Component: MetricsModule    },
-  { id: 'crm',       label: 'CRM',        icon: '◎',  Component: CRMModule        },
+  { id: 'health',    label: 'Health',     icon: '▣',  Component: ReferenceModule  },
+  { id: 'principles', label: 'Principles', icon: '✦', Component: PrinciplesModule },
 ];
 const SYSTEM_MODULES = [
-  { id: 'engine',     label: 'Project Engine', icon: '◉', Component: ProjectEngine      },
-  { id: 'principles', label: 'Principles',     icon: '✦', Component: PrinciplesModule   },
-  { id: 'reference',  label: 'Reference',      icon: '▣', Component: ReferenceModule    },
   { id: 'review',     label: 'Weekly Review',  icon: '✐', Component: WeeklyReviewModule },
   { id: 'habits',     label: 'Habits',         icon: '◐', Component: HabitsModule       },
-  { id: 'data',       label: 'Data & Storage', icon: '⬡', Component: DataPortal         },
-  { id: 'timer',      label: 'Focus Timer',    icon: '◷', Component: FocusTimer         },
-  { id: 'settings',   label: 'Settings',       icon: '◧', Component: SettingsModule     },
   { id: 'journal',    label: 'Journal',        icon: '✎', Component: JournalModule      },
 ];
-const ALL_MODULES = [...CORE_MODULES, ...SYSTEM_MODULES];
+const HIDDEN_MODULES = [
+  { id: 'settings', label: 'Settings', icon: '◧', Component: SettingsModule },
+];
+const ALL_MODULES = [...CORE_MODULES, ...SYSTEM_MODULES, ...HIDDEN_MODULES];
 
 // Bottom nav shows only primary 5
-const BOTTOM_NAV_IDS = ['dashboard', 'capture', 'cycles', 'projects', 'metrics'];
+const BOTTOM_NAV_IDS = ['dashboard', 'capture', 'cycles', 'health', 'principles'];
 
 // ── SVG icons ──────────────────────────────────────────────────────────────
 const SunIcon = () => (
@@ -87,10 +79,6 @@ const CloseIcon = () => (
 function useBadges(state) {
   return {
     capture: state.capture?.filter((c) => !c.processed).length ?? 0,
-    crm: Object.values(state.crm ?? {}).filter((c) => {
-      if (!c.lastContacted) return true;
-      return Math.floor((Date.now() - new Date(c.lastContacted)) / 86_400_000) > 30;
-    }).length,
   };
 }
 
@@ -157,7 +145,7 @@ function SectionDivider({ label, compact }) {
 }
 
 // ── DesktopSidebar ─────────────────────────────────────────────────────────
-function DesktopSidebar({ activeModule, badges, onNavigate, dark, onDarkToggle, onReset }) {
+function DesktopSidebar({ activeModule, badges, onNavigate, dark, onDarkToggle }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -209,24 +197,13 @@ function DesktopSidebar({ activeModule, badges, onNavigate, dark, onDarkToggle, 
           <span className="shrink-0">{dark ? <SunIcon /> : <MoonIcon />}</span>
           {!collapsed && <span className="text-sm">{dark ? 'Light mode' : 'Dark mode'}</span>}
         </button>
-        {!collapsed && (
-          <button
-            onClick={onReset}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs
-                       text-[var(--text-muted)] hover:text-[var(--text-primary)]
-                       hover:bg-[var(--surface-inset)] transition-colors"
-          >
-            <span className="text-base shrink-0">↺</span>
-            <span>Reset demo data</span>
-          </button>
-        )}
       </div>
     </aside>
   );
 }
 
 // ── MobileHeader ───────────────────────────────────────────────────────────
-function MobileHeader({ label, dark, onDarkToggle, onMenuOpen, onSearchOpen }) {
+function MobileHeader({ label, dark, onDarkToggle, onMenuOpen, onSearchOpen, onSettingsOpen }) {
   return (
     <header className="md:hidden shrink-0 flex items-center justify-between px-4 py-3
                        bg-[var(--sidebar-bg)] border-b border-[var(--border)]">
@@ -251,6 +228,13 @@ function MobileHeader({ label, dark, onDarkToggle, onMenuOpen, onSearchOpen }) {
           <span className="text-sm">⌘</span>
         </button>
         <button
+          onClick={onSettingsOpen}
+          className="p-2 rounded-xl text-[var(--text-muted)] hover:bg-[var(--surface-inset)] transition-colors"
+          aria-label="Open settings"
+        >
+          <SettingsIcon size={16} />
+        </button>
+        <button
           onClick={onMenuOpen}
           className="p-2 rounded-xl text-[var(--text-muted)] hover:bg-[var(--surface-inset)] transition-colors"
           aria-label="Open menu"
@@ -263,7 +247,7 @@ function MobileHeader({ label, dark, onDarkToggle, onMenuOpen, onSearchOpen }) {
 }
 
 // ── DesktopTopBar ──────────────────────────────────────────────────────────
-function DesktopTopBar({ label, dark, onDarkToggle, onSearchOpen }) {
+function DesktopTopBar({ label, dark, onDarkToggle, onSearchOpen, onSettingsOpen }) {
   return (
     <header className="hidden md:flex shrink-0 items-center gap-3 px-6 py-3
                        bg-[var(--surface)] border-b border-[var(--border)]">
@@ -283,6 +267,14 @@ function DesktopTopBar({ label, dark, onDarkToggle, onSearchOpen }) {
         title={dark ? 'Light mode' : 'Dark mode'}
       >
         {dark ? <SunIcon /> : <MoonIcon />}
+      </button>
+      <button
+        onClick={onSettingsOpen}
+        className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)]
+                   hover:bg-[var(--surface-inset)] transition-colors"
+        title="Settings"
+      >
+        <SettingsIcon size={16} />
       </button>
     </header>
   );
@@ -329,7 +321,7 @@ function MobileBottomNav({ activeModule, badges, onNavigate }) {
 }
 
 // ── MobileDrawer ────────────────────────────────────────────────────────────
-function MobileDrawer({ open, activeModule, badges, onNavigate, dark, onDarkToggle, onReset, onClose }) {
+function MobileDrawer({ open, activeModule, badges, onNavigate, dark, onDarkToggle, onClose }) {
   // Close on Escape key
   useEffect(() => {
     if (!open) return;
@@ -401,13 +393,6 @@ function MobileDrawer({ open, activeModule, badges, onNavigate, dark, onDarkTogg
             <span className="shrink-0">{dark ? <SunIcon /> : <MoonIcon />}</span>
             <span>{dark ? 'Light mode' : 'Dark mode'}</span>
           </button>
-          <button onClick={onReset}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs
-                       text-[var(--text-muted)] hover:text-[var(--text-primary)]
-                       hover:bg-[var(--surface-inset)] transition-colors">
-            <span className="text-base shrink-0">↺</span>
-            <span>Reset demo data</span>
-          </button>
         </div>
       </div>
     </>
@@ -416,7 +401,7 @@ function MobileDrawer({ open, activeModule, badges, onNavigate, dark, onDarkTogg
 
 // ── AppShell ───────────────────────────────────────────────────────────────
 function AppShell() {
-  const { state, syncLoading, setActiveModule, resetToSeed } = useOS();
+  const { state, syncLoading, setActiveModule } = useOS();
   const { dark, toggle: toggleDark } = useDarkMode();
   const [drawerOpen, setDrawerOpen]   = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -431,12 +416,10 @@ function AppShell() {
     'g d':       () => navigate('dashboard'),
     'g i':       () => navigate('capture'),
     'g c':       () => navigate('cycles'),
-    'g p':       () => navigate('projects'),
+    'g p':       () => navigate('principles'),
     'g m':       () => navigate('metrics'),
-    'g r':       () => navigate('crm'),
-    'g h':       () => navigate('habits'),
+    'g h':       () => navigate('health'),
     'g w':       () => navigate('review'),
-    'g t':       () => navigate('timer'),
     'cmd+,':     () => navigate('settings'),
     'g j':       () => navigate('journal'),
   });
@@ -475,20 +458,26 @@ function AppShell() {
         onNavigate={navigate}
         dark={dark}
         onDarkToggle={toggleDark}
-        onReset={resetToSeed}
       />
 
       {/* Main column */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
 
         {/* Headers (one visible at a time) */}
-        <DesktopTopBar label={activeLabel} dark={dark} onDarkToggle={toggleDark} onSearchOpen={() => setPaletteOpen(true)} />
+        <DesktopTopBar
+          label={activeLabel}
+          dark={dark}
+          onDarkToggle={toggleDark}
+          onSearchOpen={() => setPaletteOpen(true)}
+          onSettingsOpen={() => navigate('settings')}
+        />
         <MobileHeader
           label={activeLabel}
           dark={dark}
           onDarkToggle={toggleDark}
           onMenuOpen={() => setDrawerOpen(true)}
           onSearchOpen={() => setPaletteOpen(true)}
+          onSettingsOpen={() => navigate('settings')}
         />
 
         {/* Page */}
@@ -518,7 +507,6 @@ function AppShell() {
         onNavigate={navigate}
         dark={dark}
         onDarkToggle={toggleDark}
-        onReset={resetToSeed}
         onClose={() => setDrawerOpen(false)}
       />
     </div>
@@ -543,7 +531,6 @@ export default function App() {
         onSignIn={auth.signIn}
         onSignUp={auth.signUp}
         loading={auth.loading}
-        apiUrl={api.baseUrl}
       />
     );
   }

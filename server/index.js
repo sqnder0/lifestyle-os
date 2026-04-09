@@ -56,7 +56,7 @@ async function ensureSchema() {
 }
 
 app.post('/api/auth/signup', async (req, res) => {
-  const { email, password, username = '' } = req.body || {};
+  const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
@@ -80,7 +80,7 @@ app.post('/api/auth/signup', async (req, res) => {
     const user = insertUser.rows[0];
     await query(
       'insert into profiles (id, username, settings, onboarded) values ($1, $2, $3::jsonb, false)',
-      [user.id, username || null, JSON.stringify({})],
+      [user.id, null, JSON.stringify({})],
     );
 
     const token = signToken(user.id);
@@ -137,10 +137,9 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 
 app.get('/api/state', authMiddleware, async (req, res) => {
   try {
-    const [profile, capture, projects, metrics, cycleTemplates] = await Promise.all([
+    const [profile, capture, metrics, cycleTemplates] = await Promise.all([
       query('select username, settings, onboarded from profiles where id = $1', [req.userId]),
       query('select id, content, created_at, status from capture_inbox where user_id = $1 order by created_at desc', [req.userId]),
-      query('select id, title, status, metadata, created_at from projects where user_id = $1 order by created_at asc', [req.userId]),
       query('select id, date, energy, sleep, mood from metrics where user_id = $1 order by date asc', [req.userId]),
       query('select id, week_type, day_of_week, workout_id, meal_protocol_id from cycle_templates where user_id = $1', [req.userId]),
     ]);
@@ -148,7 +147,6 @@ app.get('/api/state', authMiddleware, async (req, res) => {
     return res.json({
       profile: profile.rows[0] || null,
       captureInbox: capture.rows,
-      projects: projects.rows,
       metrics: metrics.rows,
       cycleTemplates: cycleTemplates.rows,
     });
@@ -162,7 +160,6 @@ app.put('/api/state', authMiddleware, async (req, res) => {
   const {
     profile = null,
     captureInbox = [],
-    projects = [],
     metrics = [],
     cycleTemplates = [],
   } = payload;
@@ -188,14 +185,6 @@ app.put('/api/state', authMiddleware, async (req, res) => {
       await client.query(
         'insert into capture_inbox (id, user_id, content, created_at, status) values ($1, $2, $3, $4, $5)',
         [item.id, req.userId, item.content, item.created_at, item.status],
-      );
-    }
-
-    await client.query('delete from projects where user_id = $1', [req.userId]);
-    for (const project of projects) {
-      await client.query(
-        'insert into projects (id, user_id, title, status, metadata, created_at) values ($1, $2, $3, $4, $5::jsonb, $6)',
-        [project.id, req.userId, project.title, project.status, JSON.stringify(project.metadata ?? {}), project.created_at],
       );
     }
 

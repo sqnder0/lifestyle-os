@@ -1,10 +1,9 @@
 import { useState } from 'react';
 
-export default function AuthScreen({ onSignIn, onSignUp, loading = false, apiUrl }) {
+export default function AuthScreen({ onSignIn, onSignUp, loading = false }) {
   const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -27,7 +26,7 @@ export default function AuthScreen({ onSignIn, onSignUp, loading = false, apiUrl
       if (mode === 'signin') {
         await onSignIn({ email: email.trim(), password });
       } else {
-        await onSignUp({ email: email.trim(), password, username: username.trim() });
+        await onSignUp({ email: email.trim(), password });
       }
     } catch (err) {
       setError(err.message || 'Authentication failed.');
@@ -52,15 +51,6 @@ export default function AuthScreen({ onSignIn, onSignUp, loading = false, apiUrl
         </div>
 
         <form onSubmit={submit} className="space-y-3">
-          {mode === 'signup' && (
-            <input
-              className="input-base"
-              placeholder="Username (optional)"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              disabled={busy}
-            />
-          )}
           <input
             className="input-base"
             type="email"
@@ -103,10 +93,6 @@ export default function AuthScreen({ onSignIn, onSignUp, loading = false, apiUrl
             {mode === 'signin' ? 'Sign up' : 'Login'}
           </button>
         </div>
-
-        <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-          API endpoint: {apiUrl}
-        </p>
       </div>
     </div>
   );

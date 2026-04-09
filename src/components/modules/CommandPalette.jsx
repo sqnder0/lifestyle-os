@@ -5,14 +5,12 @@ const ALL_MODULES = [
   { id: 'dashboard', label: 'Dashboard',      icon: '⌂',  type: 'nav' },
   { id: 'capture',   label: 'Inbox',          icon: '↓',  type: 'nav' },
   { id: 'cycles',    label: 'Cycles',         icon: '↻',  type: 'nav' },
-  { id: 'projects',  label: 'Projects',       icon: '▦',  type: 'nav' },
   { id: 'metrics',   label: 'Metrics',        icon: '◈',  type: 'nav' },
-  { id: 'crm',       label: 'CRM',            icon: '◎',  type: 'nav' },
-  { id: 'engine',    label: 'Project Engine', icon: '◉',  type: 'nav' },
+  { id: 'health',    label: 'Health',         icon: '▣',  type: 'nav' },
   { id: 'principles',label: 'Principles',     icon: '✦',  type: 'nav' },
-  { id: 'reference', label: 'Reference',      icon: '▣',  type: 'nav' },
   { id: 'review',    label: 'Weekly Review',  icon: '✐',  type: 'nav' },
   { id: 'habits',    label: 'Habits',         icon: '◐',  type: 'nav' },
+  { id: 'settings',  label: 'Settings',       icon: '◧',  type: 'nav' },
 ];
 
 // Build a flat searchable index from all app state
@@ -24,28 +22,9 @@ function buildIndex(state) {
     items.push({ id: `nav-${m.id}`, label: m.label, subtitle: 'Navigate', icon: m.icon, action: 'nav', payload: m.id });
   });
 
-  // Projects
-  Object.values(state.projects ?? {}).forEach((p) => {
-    if (p.status === 'Active') {
-      items.push({ id: `proj-${p.id}`, label: p.title, subtitle: `Project · ${p.status}`, icon: '▦', action: 'nav', payload: 'projects' });
-    }
-  });
-
-  // Tasks
-  Object.values(state.tasks ?? {}).forEach((t) => {
-    if (t.status !== 'Done') {
-      items.push({ id: `task-${t.id}`, label: t.title, subtitle: `Task · ${t.status}`, icon: '☐', action: 'nav', payload: 'projects' });
-    }
-  });
-
   // Inbox
   (state.capture ?? []).filter((c) => !c.processed).forEach((c) => {
     items.push({ id: `cap-${c.id}`, label: c.text, subtitle: 'Inbox item', icon: '↓', action: 'nav', payload: 'capture' });
-  });
-
-  // Contacts
-  Object.values(state.crm ?? {}).forEach((c) => {
-    items.push({ id: `crm-${c.id}`, label: c.name, subtitle: 'Contact', icon: '◎', action: 'nav', payload: 'crm' });
   });
 
   // Principles
@@ -57,6 +36,7 @@ function buildIndex(state) {
   items.push({ id: 'action-capture',  label: 'Quick Capture',        subtitle: 'Add to inbox',     icon: '+', action: 'nav', payload: 'capture'  });
   items.push({ id: 'action-review',   label: 'Start Weekly Review',  subtitle: 'Reflection',       icon: '✐', action: 'nav', payload: 'review'   });
   items.push({ id: 'action-metrics',  label: 'Log Today\'s Metrics', subtitle: 'Energy & sleep',   icon: '◈', action: 'nav', payload: 'metrics'  });
+  items.push({ id: 'action-health',   label: 'Open Health Strategy', subtitle: 'Workouts, meals, recipes', icon: '▣', action: 'nav', payload: 'health' });
 
   return items;
 }

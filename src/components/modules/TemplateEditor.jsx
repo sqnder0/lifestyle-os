@@ -139,9 +139,9 @@ export default function TemplateEditor() {
   }, {});
 
   const intensityClass = (intensity) => {
-    if (intensity === 'High') return 'bg-[var(--fill-red)] text-red-600 border-red-100';
-    if (intensity === 'Medium') return 'bg-[var(--fill-amber)] text-amber-700 border-amber-100';
-    if (intensity === 'Low') return 'bg-[var(--fill-emerald)] text-emerald-700 border-emerald-100';
+    if (intensity >= 3) return 'bg-[var(--fill-red)] text-red-600 border-red-100';
+    if (intensity === 2) return 'bg-[var(--fill-amber)] text-amber-700 border-amber-100';
+    if (intensity === 1) return 'bg-[var(--fill-emerald)] text-emerald-700 border-emerald-100';
     return 'bg-[var(--surface-inset)] text-[var(--text-muted)] border-[var(--border)]';
   };
 
@@ -223,8 +223,8 @@ export default function TemplateEditor() {
                     </option>
                   ))}
                 </select>
-                <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full border ${intensityClass(selected?.intensity)}`}>
-                  {selected?.intensity ?? 'None'}
+                <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full border ${intensityClass(selected?.intensity_score)}`}>
+                  {selected ? `I${selected.intensity_score ?? 1}` : 'None'}
                 </span>
               </div>
             );

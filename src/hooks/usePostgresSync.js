@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { api } from '../lib/api';
-import { uid } from '../utils/schema';
+import { DEFAULT_REFERENCE, uid } from '../utils/schema';
 
 const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -20,12 +20,14 @@ function mapFromServer(seedState, payload) {
 
   const profile = payload.profile ?? null;
   if (profile) {
+    const { reference, ...profileSettings } = profile.settings ?? {};
     next.settings = {
       ...next.settings,
-      ...(profile.settings ?? {}),
+      ...profileSettings,
       name: profile.username ?? (profile.settings?.name ?? next.settings.name),
       onboarded: Boolean(profile.onboarded),
     };
+    next.reference = reference ?? next.reference ?? DEFAULT_REFERENCE;
   }
 
   if (Array.isArray(payload.captureInbox)) {
@@ -35,18 +37,6 @@ function mapFromServer(seedState, payload) {
       createdAt: row.created_at,
       processed: row.status === 'processed',
     }));
-  }
-
-  if (Array.isArray(payload.projects)) {
-    next.projects = Object.fromEntries(payload.projects.map((row) => [row.id, {
-      id: row.id,
-      title: row.title,
-      status: row.status,
-      description: row.metadata?.description ?? '',
-      taskIds: [],
-      createdAt: row.created_at,
-      metadata: row.metadata ?? {},
-    }]));
   }
 
   if (Array.isArray(payload.metrics)) {
@@ -90,7 +80,10 @@ function toServerPayload(state) {
   const profile = {
     username: state.settings?.name ?? '',
     onboarded: Boolean(state.settings?.onboarded),
-    settings: state.settings ?? {},
+    settings: {
+      ...(state.settings ?? {}),
+      reference: state.reference ?? DEFAULT_REFERENCE,
+    },
   };
 
   const captureInbox = (state.capture ?? []).map((item) => ({
@@ -98,17 +91,6 @@ function toServerPayload(state) {
     content: item.text,
     created_at: item.createdAt,
     status: item.processed ? 'processed' : 'open',
-  }));
-
-  const projects = Object.values(state.projects ?? {}).map((project) => ({
-    id: project.id,
-    title: project.title,
-    status: project.status,
-    created_at: project.createdAt,
-    metadata: {
-      description: project.description ?? '',
-      taskIds: project.taskIds ?? [],
-    },
   }));
 
   const metrics = Object.values(state.metrics ?? {}).map((metric) => ({
@@ -135,7 +117,7 @@ function toServerPayload(state) {
     }
   }
 
-  return { profile, captureInbox, projects, metrics, cycleTemplates };
+  return { profile, captureInbox, metrics, cycleTemplates };
 }
 
 export function usePostgresSync({ initialState, token }) {
