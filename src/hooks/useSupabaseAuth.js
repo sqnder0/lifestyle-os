@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 async function ensureProfile(user) {
@@ -44,16 +44,23 @@ export function useSupabaseAuth() {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const userRef = useRef(null);
 
-  const refreshProfile = useCallback(async (nextUser = user) => {
-    if (!nextUser?.id) {
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const refreshProfile = useCallback(async (nextUser) => {
+    const targetUser = nextUser ?? userRef.current;
+
+    if (!targetUser?.id) {
       setProfile(null);
       return null;
     }
 
     setProfileLoading(true);
     try {
-      const row = await ensureProfile(nextUser);
+      const row = await ensureProfile(targetUser);
       setProfile(row);
       setAuthError(null);
       return row;
@@ -64,7 +71,7 @@ export function useSupabaseAuth() {
     } finally {
       setProfileLoading(false);
     }
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
