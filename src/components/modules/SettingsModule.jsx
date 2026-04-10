@@ -1,28 +1,26 @@
 import { useState, useEffect } from 'react';
-import { Link2, RefreshCw } from 'lucide-react';
+import { CalendarDays, Link2, Mail, RefreshCw } from 'lucide-react';
 import { useOS } from '../../context/OSContext';
 import { useDarkMode } from '../../hooks/useDarkMode';
 
-// ── Default settings shape ─────────────────────────────────────────────────
 export const DEFAULT_SETTINGS = {
-  name:           '',
-  wakeTime:       '07:00',
-  sleepTarget:    8,
-  cycleGoals:     ['', '', ''],
-  reviewDay:      'Friday',
-  reviewTime:     '17:00',
+  name: '',
+  wakeTime: '07:00',
+  sleepTarget: 8,
+  cycleGoals: ['', '', ''],
+  reviewDay: 'Friday',
+  reviewTime: '17:00',
   energyLowThreshold: 4,
   focusBlockMins: 90,
   showStreakBadges: true,
-  compactSidebar:  false,
+  compactSidebar: false,
   notifyReviewReminder: true,
   notifyHabitStreak: true,
   firstDayOfWeek: 'Monday',
-  timeFormat:     '12h',
-  dateFormat:     'DD/MM/YYYY',
+  timeFormat: '12h',
+  dateFormat: 'DD/MM/YYYY',
 };
 
-// ── Toggle component ───────────────────────────────────────────────────────
 function Toggle({ value, onChange }) {
   return (
     <button
@@ -42,7 +40,6 @@ function Toggle({ value, onChange }) {
   );
 }
 
-// ── Setting row ────────────────────────────────────────────────────────────
 function SettingRow({ label, sub, children }) {
   return (
     <div className="flex items-center justify-between gap-4 py-3 border-b border-[var(--border)] last:border-0">
@@ -55,7 +52,6 @@ function SettingRow({ label, sub, children }) {
   );
 }
 
-// ── Section card ───────────────────────────────────────────────────────────
 function SettingSection({ title, children }) {
   return (
     <div className="card px-5 py-1">
@@ -68,37 +64,32 @@ function SettingSection({ title, children }) {
   );
 }
 
-// ── SettingsModule ─────────────────────────────────────────────────────────
 export default function SettingsModule() {
   const {
     state,
-    update,
-    signOut,
     authUser,
     linkedProviders,
-    linkGoogleIdentity,
-    googleProviderSession,
+    updateSettings,
+    signOut,
     syncGoogleCalendar,
-    connectGoogleCalendar,
     disconnectGoogleCalendar,
     fetchGoogleCalendars,
     saveGoogleCalendarSelection,
     applyGoogleRecurringImports,
+    linkGoogleIdentity,
   } = useOS();
   const { dark, toggle: toggleDark } = useDarkMode();
 
-  // Settings live at state.settings
   const settings = { ...DEFAULT_SETTINGS, ...(state.settings ?? {}) };
 
   const set = (key, value) => {
-    update(s => ({ ...s, settings: { ...(s.settings ?? DEFAULT_SETTINGS), [key]: value } }));
+    updateSettings({ [key]: value });
   };
 
   const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-  // ── Notification permission ──────────────────────────────────────────────
   const [notifPerm, setNotifPerm] = useState(
-    typeof Notification !== 'undefined' ? Notification.permission : 'denied'
+    typeof Notification !== 'undefined' ? Notification.permission : 'denied',
   );
   const requestNotif = async () => {
     if (typeof Notification === 'undefined') return;
@@ -106,12 +97,10 @@ export default function SettingsModule() {
     setNotifPerm(perm);
   };
 
-  const [googleEmail, setGoogleEmail] = useState(settings.googleCalendar?.email ?? '');
   const [googleCalendars, setGoogleCalendars] = useState([]);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
-  const [linkingGoogle, setLinkingGoogle] = useState(false);
 
   const loadCalendars = async () => {
     setGoogleLoading(true);
@@ -131,58 +120,12 @@ export default function SettingsModule() {
     loadCalendars();
   }, [settings.googleCalendar?.connected]);
 
-  useEffect(() => {
-    const linkEmail = settings.googleCalendar?.email || authUser?.email || '';
-    setGoogleEmail(linkEmail);
-  }, [settings.googleCalendar?.email, authUser?.email]);
-
-  useEffect(() => {
-    const hasAccessToken = Boolean(googleProviderSession?.accessToken);
-    const hasRefreshToken = Boolean(googleProviderSession?.refreshToken);
-    const hasGoogleIdentity = linkedProviders.includes('google');
-    const alreadyConnected = Boolean(settings.googleCalendar?.connected);
-
-    if (!hasGoogleIdentity || alreadyConnected || !hasAccessToken || !hasRefreshToken) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        await connectGoogleCalendar({
-          accessToken: googleProviderSession.accessToken,
-          refreshToken: googleProviderSession.refreshToken,
-          email: authUser?.email || googleEmail,
-          expiresAt: googleProviderSession.expiresAt,
-        });
-        if (!cancelled) {
-          await loadCalendars();
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setGoogleError(error.message || 'Unable to connect linked Google account.');
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    authUser?.email,
-    connectGoogleCalendar,
-    googleEmail,
-    googleProviderSession,
-    linkedProviders,
-    settings.googleCalendar?.connected,
-  ]);
-
-  const onLinkGoogleIdentity = async () => {
+  const onLinkGoogle = async () => {
     setGoogleError('');
-    setLinkingGoogle(true);
     try {
       await linkGoogleIdentity();
     } catch (error) {
       setGoogleError(error.message || 'Unable to link Google account');
-      setLinkingGoogle(false);
     }
   };
 
@@ -213,6 +156,9 @@ export default function SettingsModule() {
       if ((result?.recurringCandidates ?? []).length > 0) {
         setShowImportModal(true);
       }
+      if (settings.googleCalendar?.connected) {
+        await loadCalendars();
+      }
     } catch (error) {
       setGoogleError(error.message || 'Google sync failed');
     } finally {
@@ -221,89 +167,64 @@ export default function SettingsModule() {
   };
 
   const recurringCandidates = state.ui?.pendingGoogleRecurringImports ?? [];
+  const providerList = linkedProviders?.length ? linkedProviders : ['email'];
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-lg mx-auto space-y-4 pb-10">
-
-        {/* Header */}
         <div>
           <h1 className="text-xl font-bold text-[var(--text-primary)]">Settings</h1>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">Personalise your Lifestyle OS</p>
         </div>
 
-        {/* ── Profile ── */}
-        <SettingSection title="Profile">
-          <SettingRow label="Your name" sub="Used in greetings and exports">
-            <input
-              type="text"
-              value={settings.name}
-              onChange={e => set('name', e.target.value)}
-              placeholder="Enter your name…"
-              className="input-base w-36 text-sm"
-            />
-          </SettingRow>
-        </SettingSection>
-
-        {/* ── Account ── */}
         <SettingSection title="Account">
-          <SettingRow label="Signed in email" sub="Primary Supabase account">
-            <span className="text-xs text-[var(--text-muted)]">{authUser?.email || 'Unknown'}</span>
+          <SettingRow label="Account email" sub="Primary identity for this workspace">
+            <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+              <Mail size={12} />
+              {authUser?.email || 'Unknown'}
+            </span>
           </SettingRow>
-          <SettingRow label="Linked providers" sub="Identities attached to this account">
-            <div className="flex gap-1.5 flex-wrap justify-end max-w-[220px]">
-              {linkedProviders.length ? linkedProviders.map((provider) => (
+
+          <SettingRow label="Linked providers" sub="Identities available for sign-in and calendar linking">
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {providerList.map((provider) => (
                 <span
                   key={provider}
-                  className="text-[11px] px-2 py-1 rounded-lg bg-[var(--surface-inset)] text-[var(--text-secondary)] capitalize"
+                  className="text-[10px] px-2 py-1 rounded-full border border-[var(--border)] text-[var(--text-muted)] uppercase"
                 >
                   {provider}
                 </span>
-              )) : (
-                <span className="text-xs text-[var(--text-muted)]">No linked providers</span>
-              )}
+              ))}
             </div>
           </SettingRow>
-          {!linkedProviders.includes('google') ? (
-            <div className="py-3">
-              <button
-                onClick={onLinkGoogleIdentity}
-                disabled={linkingGoogle}
-                className="inline-flex items-center gap-2 text-xs px-4 py-2 rounded-xl bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] hover:opacity-90 disabled:opacity-60"
-              >
-                <Link2 size={14} />
-                {linkingGoogle ? 'Linking...' : 'Link Google Account'}
-              </button>
-            </div>
-          ) : null}
-        </SettingSection>
 
-        {/* ── Google Calendar ── */}
-        <SettingSection title="Google Calendar">
-          {!settings.googleCalendar?.connected ? (
-            <div className="py-3 space-y-2.5">
-              <p className="text-xs text-[var(--text-secondary)]">
-                {linkedProviders.includes('google')
-                  ? 'Google is linked. If this is your first link, return from consent flow to complete connection.'
-                  : 'Link a Google identity in Account, then return here to sync your calendar.'}
-              </p>
-              <button
-                onClick={onLinkGoogleIdentity}
-                disabled={googleLoading || linkingGoogle}
-                className="inline-flex items-center gap-2 text-xs px-4 py-2 rounded-xl bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] hover:opacity-90 disabled:opacity-60"
-              >
-                <Link2 size={14} />
-                {linkingGoogle ? 'Linking...' : 'Link Google Account'}
-              </button>
-            </div>
-          ) : (
+          <div className="py-3 space-y-2">
+            <button
+              onClick={onLinkGoogle}
+              className="w-full text-xs px-4 py-2 rounded-xl border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--surface-inset)] transition-colors inline-flex items-center justify-center gap-2"
+            >
+              <Link2 size={14} />
+              {providerList.includes('google') ? 'Relink Google Account' : 'Link Google Account'}
+            </button>
+            <button
+              onClick={onSyncNow}
+              disabled={googleLoading}
+              className="w-full text-xs px-4 py-2 rounded-xl bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] hover:opacity-90 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            >
+              {googleLoading ? <RefreshCw size={14} className="animate-spin" /> : <CalendarDays size={14} />}
+              {googleLoading ? 'Syncing Google Calendar...' : 'Sync Google Calendar'}
+            </button>
+          </div>
+
+          {settings.googleCalendar?.connected ? (
             <>
               <SettingRow
-                label="Connected account"
+                label="Connected calendar identity"
                 sub={settings.googleCalendar?.lastSyncedAt ? `Last synced ${new Date(settings.googleCalendar.lastSyncedAt).toLocaleString()}` : 'Not synced yet'}
               >
                 <span className="text-xs text-[var(--text-muted)]">{settings.googleCalendar?.email || 'Connected'}</span>
               </SettingRow>
+
               <div className="py-3 space-y-2.5">
                 <p className="text-xs text-[var(--text-secondary)]">Calendars to include</p>
                 {googleCalendars.length === 0 ? (
@@ -325,45 +246,51 @@ export default function SettingsModule() {
                     })}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <button
-                    onClick={onSyncNow}
-                    disabled={googleLoading}
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-inset)] disabled:opacity-60"
-                  >
-                    <RefreshCw size={12} className={googleLoading ? 'animate-spin' : ''} />
-                    {googleLoading ? 'Syncing...' : 'Sync Google Calendar'}
-                  </button>
-                  <button
-                    onClick={onDisconnectGoogle}
-                    disabled={googleLoading}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-red-100 text-red-500 hover:bg-[var(--fill-red)] disabled:opacity-60"
-                  >
-                    Disconnect
-                  </button>
-                </div>
+
+                <button
+                  onClick={onDisconnectGoogle}
+                  disabled={googleLoading}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-red-100 text-red-500 hover:bg-[var(--fill-red)] disabled:opacity-60"
+                >
+                  Disconnect Google Calendar
+                </button>
               </div>
             </>
-          )}
+          ) : null}
+
           {googleError ? <p className="text-[11px] text-red-500 pb-2">{googleError}</p> : null}
         </SettingSection>
 
-        {/* ── Schedule ── */}
+        <SettingSection title="Profile">
+          <SettingRow label="Your name" sub="Used in greetings and exports">
+            <input
+              type="text"
+              value={settings.name}
+              onChange={(e) => set('name', e.target.value)}
+              placeholder="Enter your name..."
+              className="input-base w-36 text-sm"
+            />
+          </SettingRow>
+        </SettingSection>
+
         <SettingSection title="Daily schedule">
           <SettingRow label="Wake time" sub="Used to anchor your morning block">
             <input
               type="time"
               value={settings.wakeTime}
-              onChange={e => set('wakeTime', e.target.value)}
+              onChange={(e) => set('wakeTime', e.target.value)}
               className="input-base w-28 text-sm"
             />
           </SettingRow>
           <SettingRow label="Sleep target" sub="Your nightly goal in hours">
             <div className="flex items-center gap-2">
               <input
-                type="range" min={5} max={10} step={0.5}
+                type="range"
+                min={5}
+                max={10}
+                step={0.5}
                 value={settings.sleepTarget}
-                onChange={e => set('sleepTarget', parseFloat(e.target.value))}
+                onChange={(e) => set('sleepTarget', parseFloat(e.target.value))}
                 className="w-24 accent-[var(--accent-indigo)]"
               />
               <span className="text-sm text-[var(--text-primary)] tabular-nums w-8">
@@ -374,16 +301,16 @@ export default function SettingsModule() {
           <SettingRow label="Weekly review day" sub="When you get your review reminder">
             <select
               value={settings.reviewDay}
-              onChange={e => set('reviewDay', e.target.value)}
+              onChange={(e) => set('reviewDay', e.target.value)}
               className="input-base w-28 text-sm"
             >
-              {DAYS.map(d => <option key={d}>{d}</option>)}
+              {DAYS.map((d) => <option key={d}>{d}</option>)}
             </select>
           </SettingRow>
           <SettingRow label="First day of week" sub="Calendar display preference">
             <select
               value={settings.firstDayOfWeek}
-              onChange={e => set('firstDayOfWeek', e.target.value)}
+              onChange={(e) => set('firstDayOfWeek', e.target.value)}
               className="input-base w-28 text-sm"
             >
               <option>Monday</option>
@@ -392,14 +319,16 @@ export default function SettingsModule() {
           </SettingRow>
         </SettingSection>
 
-        {/* ── Focus & energy ── */}
         <SettingSection title="Focus & energy">
           <SettingRow label="Default focus block" sub="Minutes for new cycle blocks">
             <div className="flex items-center gap-2">
               <input
-                type="range" min={25} max={180} step={5}
+                type="range"
+                min={25}
+                max={180}
+                step={5}
                 value={settings.focusBlockMins}
-                onChange={e => set('focusBlockMins', parseInt(e.target.value))}
+                onChange={(e) => set('focusBlockMins', parseInt(e.target.value, 10))}
                 className="w-24 accent-[var(--accent-indigo)]"
               />
               <span className="text-sm text-[var(--text-primary)] tabular-nums w-10">
@@ -409,13 +338,13 @@ export default function SettingsModule() {
           </SettingRow>
           <SettingRow label="Low-energy threshold" sub="Show protocol below this energy level">
             <div className="flex items-center gap-1">
-              {[1,2,3,4,5].map(n => (
+              {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
                   onClick={() => set('energyLowThreshold', n)}
                   className={`w-7 h-7 rounded-lg text-xs font-bold transition-all
                     ${settings.energyLowThreshold === n
-                      ? 'bg-[var(--fill-red)]0 text-white'
+                      ? 'bg-[var(--fill-red)] text-white'
                       : 'bg-[var(--surface-inset)] text-[var(--text-muted)] hover:bg-[var(--border)]'}`}
                 >
                   {n}
@@ -425,22 +354,24 @@ export default function SettingsModule() {
           </SettingRow>
         </SettingSection>
 
-        {/* ── Appearance ── */}
         <SettingSection title="Appearance">
-          <SettingRow label="Dark mode" sub="Currently {dark ? 'on' : 'off'}">
+          <SettingRow label="Dark mode" sub={`Currently ${dark ? 'on' : 'off'}`}>
             <Toggle value={dark} onChange={toggleDark} />
           </SettingRow>
           <SettingRow label="Streak badges" sub="Show habit streak counts in lists">
-            <Toggle value={settings.showStreakBadges} onChange={v => set('showStreakBadges', v)} />
+            <Toggle value={settings.showStreakBadges} onChange={(v) => set('showStreakBadges', v)} />
           </SettingRow>
           <SettingRow label="Time format" sub="12-hour or 24-hour clock">
             <div className="flex gap-1">
-              {['12h','24h'].map(f => (
-                <button key={f} onClick={() => set('timeFormat', f)}
+              {['12h', '24h'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => set('timeFormat', f)}
                   className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-all
                     ${settings.timeFormat === f
                       ? 'bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] border-[var(--sidebar-active)]'
-                      : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'}`}>
+                      : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'}`}
+                >
                   {f}
                 </button>
               ))}
@@ -448,7 +379,6 @@ export default function SettingsModule() {
           </SettingRow>
         </SettingSection>
 
-        {/* ── Notifications ── */}
         <SettingSection title="Notifications">
           {notifPerm !== 'granted' ? (
             <div className="py-3">
@@ -463,34 +393,32 @@ export default function SettingsModule() {
               </button>
               {notifPerm === 'denied' && (
                 <p className="text-[11px] text-red-400 mt-2">
-                  Blocked in browser settings. Update via browser → Site settings.
+                  Blocked in browser settings. Update via browser to site settings.
                 </p>
               )}
             </div>
           ) : (
             <>
               <SettingRow label="Review reminder" sub={`Remind on ${settings.reviewDay} evenings`}>
-                <Toggle value={settings.notifyReviewReminder} onChange={v => set('notifyReviewReminder', v)} />
+                <Toggle value={settings.notifyReviewReminder} onChange={(v) => set('notifyReviewReminder', v)} />
               </SettingRow>
               <SettingRow label="Habit streaks" sub="Remind if no habits logged by evening">
-                <Toggle value={settings.notifyHabitStreak} onChange={v => set('notifyHabitStreak', v)} />
+                <Toggle value={settings.notifyHabitStreak} onChange={(v) => set('notifyHabitStreak', v)} />
               </SettingRow>
             </>
           )}
         </SettingSection>
 
-        {/* ── About ── */}
         <SettingSection title="About">
           <SettingRow label="Version" sub="">
             <span className="text-xs text-[var(--text-muted)] font-mono">v1.0.0</span>
           </SettingRow>
-          <SettingRow label="Storage" sub="State synced to Supabase/PostgreSQL">
-            <span className="text-xs text-[var(--text-muted)]">Supabase + Postgres</span>
+          <SettingRow label="Storage" sub="Data persisted through Supabase + Postgres sync">
+            <span className="text-xs text-[var(--text-muted)]">supabase · postgres</span>
           </SettingRow>
           <div className="py-2">
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              Lifestyle OS — a personal operating system built with React, Tailwind CSS, and care.
-              Data syncs through your PostgreSQL-backed API and is scoped to your account.
+              Lifestyle OS is a personal operating system built with React and Tailwind CSS.
             </p>
           </div>
           <div className="py-2">
@@ -502,7 +430,6 @@ export default function SettingsModule() {
             </button>
           </div>
         </SettingSection>
-
       </div>
 
       {showImportModal ? (
@@ -516,7 +443,7 @@ export default function SettingsModule() {
                 return (
                   <div key={event.google_event_id} className="rounded-xl border border-[var(--border)] px-3 py-2">
                     <p className="text-sm text-[var(--text-primary)]">{event.summary}</p>
-                    <p className="text-[11px] text-[var(--text-muted)]">{cadence} · starts {new Date(event.start_time).toLocaleString()}</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">{cadence} - starts {new Date(event.start_time).toLocaleString()}</p>
                   </div>
                 );
               })}

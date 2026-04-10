@@ -508,7 +508,7 @@ function AppShell() {
   );
 }
 
-function AuthenticatedApp() {
+function AuthenticatedWorkspace() {
   const { state, syncLoading } = useOS();
 
   if (syncLoading) {
@@ -519,11 +519,7 @@ function AuthenticatedApp() {
     );
   }
 
-  if (!state.settings?.onboarded) {
-    return <OnboardingFlow />;
-  }
-
-  return <AppShell />;
+  return state.settings?.onboarded ? <AppShell /> : <OnboardingFlow />;
 }
 
 // ── Root ───────────────────────────────────────────────────────────────────
@@ -554,7 +550,7 @@ export default function App() {
 
   return (
     <OSProvider auth={auth}>
-      <AuthenticatedApp />
+      <AuthenticatedWorkspace />
     </OSProvider>
   );
 }

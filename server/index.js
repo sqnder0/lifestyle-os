@@ -143,7 +143,7 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 
 app.get('/api/state', authMiddleware, async (req, res) => {
   try {
-    const [profile, capture, metrics, cycleTemplates, syncedEvents, habits] = await Promise.all([
+    const [profile, capture, metrics, cycleTemplates, syncedEvents, habits, principles] = await Promise.all([
       query(
         `select username, settings, onboarded, google_email, google_access_token, google_refresh_token, google_token_expires_at, google_last_synced_at
          from profiles where id = $1`,
@@ -160,6 +160,13 @@ app.get('/api/state', authMiddleware, async (req, res) => {
         [req.userId],
       ),
       query('select id, name, emoji, color, logs, created_at from habits where user_id = $1 order by created_at asc', [req.userId]),
+      query(
+        `select id, title, body, category, principle_order, created_at
+         from principles
+         where user_id = $1
+         order by principle_order asc, created_at asc`,
+        [req.userId],
+      ),
     ]);
 
     return res.json({
@@ -169,6 +176,7 @@ app.get('/api/state', authMiddleware, async (req, res) => {
       cycleTemplates: cycleTemplates.rows,
       syncedEvents: syncedEvents.rows,
       habits: habits.rows,
+      principles: principles.rows,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -184,6 +192,7 @@ app.put('/api/state', authMiddleware, async (req, res) => {
     cycleTemplates = [],
     syncedEvents = [],
     habits = [],
+    principles = [],
   } = payload;
 
   const client = await getClient();
@@ -262,17 +271,18 @@ app.put('/api/state', authMiddleware, async (req, res) => {
     await client.query('delete from habits where user_id = $1', [req.userId]);
     for (const habit of habits) {
       await client.query(
-        `insert into habits (id, user_id, name, emoji, color, logs, created_at)
-         values ($1, $2, $3, $4, $5, $6::jsonb, coalesce($7::timestamptz, now()))`,
-        [
-          habit.id,
-          req.userId,
-          habit.name,
-          habit.emoji ?? null,
-          habit.color ?? null,
-          JSON.stringify(habit.logs ?? {}),
-          habit.created_at ?? null,
-        ],
+        `insert into habits (id, user_id, name, emoji, color, logs)
+         values ($1, $2, $3, $4, $5, $6::jsonb)`,
+        [habit.id, req.userId, habit.name, habit.emoji ?? null, habit.color ?? null, JSON.stringify(habit.logs ?? {})],
+      );
+    }
+
+    await client.query('delete from principles where user_id = $1', [req.userId]);
+    for (const principle of principles) {
+      await client.query(
+        `insert into principles (id, user_id, title, body, category, principle_order)
+         values ($1, $2, $3, $4, $5, $6)`,
+        [principle.id, req.userId, principle.title, principle.body, principle.category ?? 'General', principle.principle_order ?? 0],
       );
     }
 
@@ -318,19 +328,18 @@ app.post('/api/google/connect', authMiddleware, async (req, res) => {
     expiresAt,
   } = req.body || {};
 
-  if (!accessToken || !refreshToken || !email) {
-    return res.status(400).json({ error: 'accessToken, refreshToken, and email are required.' });
+  if (!accessToken || !email) {
+    return res.status(400).json({ error: 'accessToken and email are required.' });
   }
 
   try {
     await query(
-      `insert into profiles (id, username, settings, onboarded, google_access_token, google_refresh_token, google_email, google_token_expires_at)
-       values ($1, null, '{}'::jsonb, false, $2, $3, lower($4), $5)
-       on conflict (id) do update set
-         google_access_token = excluded.google_access_token,
-         google_refresh_token = excluded.google_refresh_token,
-         google_email = excluded.google_email,
-         google_token_expires_at = excluded.google_token_expires_at`,
+      `update profiles
+       set google_access_token = $2,
+           google_refresh_token = coalesce($3, google_refresh_token),
+           google_email = lower($4),
+           google_token_expires_at = $5
+       where id = $1`,
       [req.userId, accessToken, refreshToken, email, expiresAt ?? null],
     );
     return res.json({ ok: true });

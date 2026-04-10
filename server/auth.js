@@ -1,6 +1,18 @@
 import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const TOKEN_TTL = '7d';
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+const supabaseAuthClient = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+  : null;
 
 function requireSecret() {
   if (!process.env.JWT_SECRET) {
@@ -19,31 +31,11 @@ export function verifyToken(token) {
 }
 
 async function verifySupabaseToken(token) {
-  const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseAuthClient) return null;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return null;
-  }
-
-  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      apikey: supabaseAnonKey,
-    },
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const payload = await response.json().catch(() => null);
-  if (!payload?.id) return null;
-
-  return {
-    sub: payload.id,
-    email: payload.email || null,
-  };
+  const { data, error } = await supabaseAuthClient.auth.getUser(token);
+  if (error || !data?.user?.id) return null;
+  return data.user.id;
 }
 
 export async function authMiddleware(req, res, next) {
@@ -57,19 +49,13 @@ export async function authMiddleware(req, res, next) {
   try {
     const payload = verifyToken(token);
     req.userId = payload.sub;
-    req.authProvider = 'legacy-jwt';
     return next();
   } catch {
-    try {
-      const supabasePayload = await verifySupabaseToken(token);
-      if (!supabasePayload) {
-        return res.status(401).json({ error: 'Invalid or expired token' });
-      }
-      req.userId = supabasePayload.sub;
-      req.authProvider = 'supabase';
+    const supabaseUserId = await verifySupabaseToken(token);
+    if (supabaseUserId) {
+      req.userId = supabaseUserId;
       return next();
-    } catch {
-      return res.status(401).json({ error: 'Invalid or expired token' });
     }
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }

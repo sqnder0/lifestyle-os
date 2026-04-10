@@ -90,7 +90,7 @@ create table if not exists synced_events (
 create index if not exists synced_events_user_start_idx on synced_events(user_id, start_time asc);
 
 create table if not exists habits (
-  id text primary key,
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth_users(id) on delete cascade,
   name text not null,
   emoji text,
@@ -100,6 +100,18 @@ create table if not exists habits (
   updated_at timestamptz not null default now()
 );
 create index if not exists habits_user_created_idx on habits(user_id, created_at asc);
+
+create table if not exists principles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth_users(id) on delete cascade,
+  title text not null,
+  body text not null,
+  category text not null default 'General',
+  principle_order int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists principles_user_order_idx on principles(user_id, principle_order asc, created_at asc);
 
 create or replace function set_updated_at()
 returns trigger as $$
@@ -131,4 +143,8 @@ for each row execute procedure set_updated_at();
 
 drop trigger if exists habits_set_updated_at on habits;
 create trigger habits_set_updated_at before update on habits
+for each row execute procedure set_updated_at();
+
+drop trigger if exists principles_set_updated_at on principles;
+create trigger principles_set_updated_at before update on principles
 for each row execute procedure set_updated_at();
