@@ -163,6 +163,7 @@ export const SEED_STATE = {
     metricTargets: {
       sleepHours: 8,
     },
+    cycleGoals: ['', '', ''],
     reviewDay: 'Friday',
     reviewTime: '17:00',
     energyLowThreshold: 4,

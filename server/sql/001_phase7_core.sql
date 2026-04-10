@@ -89,6 +89,18 @@ create table if not exists synced_events (
 );
 create index if not exists synced_events_user_start_idx on synced_events(user_id, start_time asc);
 
+create table if not exists habits (
+  id text primary key,
+  user_id uuid not null references auth_users(id) on delete cascade,
+  name text not null,
+  emoji text,
+  color text,
+  logs jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists habits_user_created_idx on habits(user_id, created_at asc);
+
 create or replace function set_updated_at()
 returns trigger as $$
 begin
@@ -115,4 +127,8 @@ for each row execute procedure set_updated_at();
 
 drop trigger if exists synced_events_set_updated_at on synced_events;
 create trigger synced_events_set_updated_at before update on synced_events
+for each row execute procedure set_updated_at();
+
+drop trigger if exists habits_set_updated_at on habits;
+create trigger habits_set_updated_at before update on habits
 for each row execute procedure set_updated_at();

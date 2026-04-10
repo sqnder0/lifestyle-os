@@ -143,7 +143,7 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 
 app.get('/api/state', authMiddleware, async (req, res) => {
   try {
-    const [profile, capture, metrics, cycleTemplates, syncedEvents] = await Promise.all([
+    const [profile, capture, metrics, cycleTemplates, syncedEvents, habits] = await Promise.all([
       query(
         `select username, settings, onboarded, google_email, google_access_token, google_refresh_token, google_token_expires_at, google_last_synced_at
          from profiles where id = $1`,
@@ -159,6 +159,7 @@ app.get('/api/state', authMiddleware, async (req, res) => {
          order by start_time asc`,
         [req.userId],
       ),
+      query('select id, name, emoji, color, logs, created_at from habits where user_id = $1 order by created_at asc', [req.userId]),
     ]);
 
     return res.json({
@@ -167,6 +168,7 @@ app.get('/api/state', authMiddleware, async (req, res) => {
       metrics: metrics.rows,
       cycleTemplates: cycleTemplates.rows,
       syncedEvents: syncedEvents.rows,
+      habits: habits.rows,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -181,6 +183,7 @@ app.put('/api/state', authMiddleware, async (req, res) => {
     metrics = [],
     cycleTemplates = [],
     syncedEvents = [],
+    habits = [],
   } = payload;
 
   const client = await getClient();
@@ -256,6 +259,23 @@ app.put('/api/state', authMiddleware, async (req, res) => {
       );
     }
 
+    await client.query('delete from habits where user_id = $1', [req.userId]);
+    for (const habit of habits) {
+      await client.query(
+        `insert into habits (id, user_id, name, emoji, color, logs, created_at)
+         values ($1, $2, $3, $4, $5, $6::jsonb, coalesce($7::timestamptz, now()))`,
+        [
+          habit.id,
+          req.userId,
+          habit.name,
+          habit.emoji ?? null,
+          habit.color ?? null,
+          JSON.stringify(habit.logs ?? {}),
+          habit.created_at ?? null,
+        ],
+      );
+    }
+
     await client.query('commit');
     return res.json({ ok: true });
   } catch (error) {
@@ -304,12 +324,13 @@ app.post('/api/google/connect', authMiddleware, async (req, res) => {
 
   try {
     await query(
-      `update profiles
-       set google_access_token = $2,
-           google_refresh_token = $3,
-           google_email = lower($4),
-           google_token_expires_at = $5
-       where id = $1`,
+      `insert into profiles (id, username, settings, onboarded, google_access_token, google_refresh_token, google_email, google_token_expires_at)
+       values ($1, null, '{}'::jsonb, false, $2, $3, lower($4), $5)
+       on conflict (id) do update set
+         google_access_token = excluded.google_access_token,
+         google_refresh_token = excluded.google_refresh_token,
+         google_email = excluded.google_email,
+         google_token_expires_at = excluded.google_token_expires_at`,
       [req.userId, accessToken, refreshToken, email, expiresAt ?? null],
     );
     return res.json({ ok: true });

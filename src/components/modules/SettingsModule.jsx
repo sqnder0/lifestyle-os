@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link2, RefreshCw } from 'lucide-react';
 import { useOS } from '../../context/OSContext';
 import { useDarkMode } from '../../hooks/useDarkMode';
 
@@ -7,6 +8,7 @@ export const DEFAULT_SETTINGS = {
   name:           '',
   wakeTime:       '07:00',
   sleepTarget:    8,
+  cycleGoals:     ['', '', ''],
   reviewDay:      'Friday',
   reviewTime:     '17:00',
   energyLowThreshold: 4,
@@ -72,6 +74,10 @@ export default function SettingsModule() {
     state,
     update,
     signOut,
+    authUser,
+    linkedProviders,
+    linkGoogleIdentity,
+    googleProviderSession,
     syncGoogleCalendar,
     connectGoogleCalendar,
     disconnectGoogleCalendar,
@@ -101,12 +107,11 @@ export default function SettingsModule() {
   };
 
   const [googleEmail, setGoogleEmail] = useState(settings.googleCalendar?.email ?? '');
-  const [googleAccessToken, setGoogleAccessToken] = useState('');
-  const [googleRefreshToken, setGoogleRefreshToken] = useState('');
   const [googleCalendars, setGoogleCalendars] = useState([]);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
 
   const loadCalendars = async () => {
     setGoogleLoading(true);
@@ -126,22 +131,58 @@ export default function SettingsModule() {
     loadCalendars();
   }, [settings.googleCalendar?.connected]);
 
-  const onConnectGoogle = async () => {
-    setGoogleLoading(true);
+  useEffect(() => {
+    const linkEmail = settings.googleCalendar?.email || authUser?.email || '';
+    setGoogleEmail(linkEmail);
+  }, [settings.googleCalendar?.email, authUser?.email]);
+
+  useEffect(() => {
+    const hasAccessToken = Boolean(googleProviderSession?.accessToken);
+    const hasRefreshToken = Boolean(googleProviderSession?.refreshToken);
+    const hasGoogleIdentity = linkedProviders.includes('google');
+    const alreadyConnected = Boolean(settings.googleCalendar?.connected);
+
+    if (!hasGoogleIdentity || alreadyConnected || !hasAccessToken || !hasRefreshToken) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        await connectGoogleCalendar({
+          accessToken: googleProviderSession.accessToken,
+          refreshToken: googleProviderSession.refreshToken,
+          email: authUser?.email || googleEmail,
+          expiresAt: googleProviderSession.expiresAt,
+        });
+        if (!cancelled) {
+          await loadCalendars();
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setGoogleError(error.message || 'Unable to connect linked Google account.');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authUser?.email,
+    connectGoogleCalendar,
+    googleEmail,
+    googleProviderSession,
+    linkedProviders,
+    settings.googleCalendar?.connected,
+  ]);
+
+  const onLinkGoogleIdentity = async () => {
     setGoogleError('');
+    setLinkingGoogle(true);
     try {
-      await connectGoogleCalendar({
-        accessToken: googleAccessToken.trim(),
-        refreshToken: googleRefreshToken.trim(),
-        email: googleEmail.trim(),
-      });
-      await loadCalendars();
-      setGoogleAccessToken('');
-      setGoogleRefreshToken('');
+      await linkGoogleIdentity();
     } catch (error) {
-      setGoogleError(error.message || 'Unable to connect Google Calendar');
-    } finally {
-      setGoogleLoading(false);
+      setGoogleError(error.message || 'Unable to link Google account');
+      setLinkingGoogle(false);
     }
   };
 
@@ -204,40 +245,55 @@ export default function SettingsModule() {
           </SettingRow>
         </SettingSection>
 
+        {/* ── Account ── */}
+        <SettingSection title="Account">
+          <SettingRow label="Signed in email" sub="Primary Supabase account">
+            <span className="text-xs text-[var(--text-muted)]">{authUser?.email || 'Unknown'}</span>
+          </SettingRow>
+          <SettingRow label="Linked providers" sub="Identities attached to this account">
+            <div className="flex gap-1.5 flex-wrap justify-end max-w-[220px]">
+              {linkedProviders.length ? linkedProviders.map((provider) => (
+                <span
+                  key={provider}
+                  className="text-[11px] px-2 py-1 rounded-lg bg-[var(--surface-inset)] text-[var(--text-secondary)] capitalize"
+                >
+                  {provider}
+                </span>
+              )) : (
+                <span className="text-xs text-[var(--text-muted)]">No linked providers</span>
+              )}
+            </div>
+          </SettingRow>
+          {!linkedProviders.includes('google') ? (
+            <div className="py-3">
+              <button
+                onClick={onLinkGoogleIdentity}
+                disabled={linkingGoogle}
+                className="inline-flex items-center gap-2 text-xs px-4 py-2 rounded-xl bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] hover:opacity-90 disabled:opacity-60"
+              >
+                <Link2 size={14} />
+                {linkingGoogle ? 'Linking...' : 'Link Google Account'}
+              </button>
+            </div>
+          ) : null}
+        </SettingSection>
+
         {/* ── Google Calendar ── */}
         <SettingSection title="Google Calendar">
           {!settings.googleCalendar?.connected ? (
             <div className="py-3 space-y-2.5">
               <p className="text-xs text-[var(--text-secondary)]">
-                Connect a Google account token pair from your Supabase Google auth session.
+                {linkedProviders.includes('google')
+                  ? 'Google is linked. If this is your first link, return from consent flow to complete connection.'
+                  : 'Link a Google identity in Account, then return here to sync your calendar.'}
               </p>
-              <input
-                type="email"
-                value={googleEmail}
-                onChange={(e) => setGoogleEmail(e.target.value)}
-                placeholder="Google account email"
-                className="input-base w-full text-sm"
-              />
-              <input
-                type="password"
-                value={googleAccessToken}
-                onChange={(e) => setGoogleAccessToken(e.target.value)}
-                placeholder="Google access token"
-                className="input-base w-full text-sm"
-              />
-              <input
-                type="password"
-                value={googleRefreshToken}
-                onChange={(e) => setGoogleRefreshToken(e.target.value)}
-                placeholder="Google refresh token"
-                className="input-base w-full text-sm"
-              />
               <button
-                onClick={onConnectGoogle}
-                disabled={googleLoading || !googleEmail.trim() || !googleAccessToken.trim() || !googleRefreshToken.trim()}
-                className="text-xs px-4 py-2 rounded-xl bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] hover:opacity-90 disabled:opacity-60"
+                onClick={onLinkGoogleIdentity}
+                disabled={googleLoading || linkingGoogle}
+                className="inline-flex items-center gap-2 text-xs px-4 py-2 rounded-xl bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] hover:opacity-90 disabled:opacity-60"
               >
-                {googleLoading ? 'Connecting...' : 'Connect Google Calendar'}
+                <Link2 size={14} />
+                {linkingGoogle ? 'Linking...' : 'Link Google Account'}
               </button>
             </div>
           ) : (
@@ -273,9 +329,10 @@ export default function SettingsModule() {
                   <button
                     onClick={onSyncNow}
                     disabled={googleLoading}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-inset)] disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-inset)] disabled:opacity-60"
                   >
-                    {googleLoading ? 'Syncing...' : 'Force Sync'}
+                    <RefreshCw size={12} className={googleLoading ? 'animate-spin' : ''} />
+                    {googleLoading ? 'Syncing...' : 'Sync Google Calendar'}
                   </button>
                   <button
                     onClick={onDisconnectGoogle}
@@ -427,8 +484,8 @@ export default function SettingsModule() {
           <SettingRow label="Version" sub="">
             <span className="text-xs text-[var(--text-muted)] font-mono">v1.0.0</span>
           </SettingRow>
-          <SettingRow label="Storage" sub="Data saved in browser localStorage">
-            <span className="text-xs text-[var(--text-muted)]">localStorage · v5</span>
+          <SettingRow label="Storage" sub="State synced to Supabase/PostgreSQL">
+            <span className="text-xs text-[var(--text-muted)]">Supabase + Postgres</span>
           </SettingRow>
           <div className="py-2">
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">

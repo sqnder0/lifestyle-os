@@ -508,6 +508,24 @@ function AppShell() {
   );
 }
 
+function AuthenticatedApp() {
+  const { state, syncLoading } = useOS();
+
+  if (syncLoading) {
+    return (
+      <div className="min-h-screen bg-[var(--surface-page)] flex items-center justify-center">
+        <p className="text-sm text-[var(--text-muted)]">Syncing your workspace...</p>
+      </div>
+    );
+  }
+
+  if (!state.settings?.onboarded) {
+    return <OnboardingFlow />;
+  }
+
+  return <AppShell />;
+}
+
 // ── Root ───────────────────────────────────────────────────────────────────
 export default function App() {
   const auth = useSupabaseAuth();
@@ -534,19 +552,9 @@ export default function App() {
     );
   }
 
-  if (!auth.profile?.onboarded) {
-    return (
-      <OnboardingFlow
-        onComplete={async ({ firstName, sleepTarget }) => {
-          await auth.completeOnboarding({ firstName, sleepTarget });
-        }}
-      />
-    );
-  }
-
   return (
     <OSProvider auth={auth}>
-      <AppShell />
+      <AuthenticatedApp />
     </OSProvider>
   );
 }

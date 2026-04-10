@@ -159,6 +159,30 @@ export function useSupabaseAuth() {
     if (error) throw error;
   }, []);
 
+  const linkGoogleIdentity = useCallback(async () => {
+    const redirectTo = `${window.location.origin}/`;
+    const options = {
+      redirectTo,
+      scopes: 'https://www.googleapis.com/auth/calendar.readonly',
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'consent',
+      },
+    };
+
+    if (typeof supabase.auth.linkIdentity === 'function') {
+      const { data, error } = await supabase.auth.linkIdentity({ provider: 'google', options });
+      if (error) throw error;
+      if (data?.url) {
+        window.location.assign(data.url);
+      }
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options });
+    if (error) throw error;
+  }, []);
+
   const completeOnboarding = useCallback(async ({ firstName, sleepTarget }) => {
     if (!user?.id) throw new Error('No authenticated user.');
 
@@ -196,6 +220,22 @@ export function useSupabaseAuth() {
     if (error) throw error;
   }, []);
 
+  const linkedProviders = useMemo(() => {
+    const identities = user?.identities ?? [];
+    return [...new Set(identities.map((identity) => identity?.provider).filter(Boolean))];
+  }, [user]);
+
+  const googleProviderSession = useMemo(() => {
+    if (!session?.provider_token) return null;
+    const provider = session?.user?.app_metadata?.provider;
+    if (provider !== 'google') return null;
+    return {
+      accessToken: session.provider_token,
+      refreshToken: session.provider_refresh_token ?? null,
+      expiresAt: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
+    };
+  }, [session]);
+
   return useMemo(() => ({
     session,
     token: session?.access_token ?? null,
@@ -207,9 +247,12 @@ export function useSupabaseAuth() {
     signIn,
     signUp,
     signInWithGoogle,
+    linkGoogleIdentity,
     signOut,
     refreshProfile,
     completeOnboarding,
+    linkedProviders,
+    googleProviderSession,
   }), [
     session,
     user,
@@ -220,8 +263,11 @@ export function useSupabaseAuth() {
     signIn,
     signUp,
     signInWithGoogle,
+    linkGoogleIdentity,
     signOut,
     refreshProfile,
     completeOnboarding,
+    linkedProviders,
+    googleProviderSession,
   ]);
 }

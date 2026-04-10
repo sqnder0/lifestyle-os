@@ -4,6 +4,9 @@ import { DEFAULT_REFERENCE, uid } from '../utils/schema';
 
 const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+const isMissingHabitsRelation = (error) =>
+  Boolean(error?.message && /relation .*habits/i.test(error.message));
+
 const toDateKey = (value) => {
   const d = new Date(value);
   const y = d.getFullYear();
@@ -20,7 +23,7 @@ function mapFromServer(seedState, payload) {
 
   const profile = payload.profile ?? null;
   if (profile) {
-    const { reference, habits, principles, ...profileSettings } = profile.settings ?? {};
+    const { reference, principles, habits: legacyHabits, ...profileSettings } = profile.settings ?? {};
     const googleCalendar = {
       connected: Boolean(profile?.google_access_token ?? false),
       email: profile?.google_email ?? profileSettings?.googleCalendar?.email ?? '',
@@ -35,8 +38,19 @@ function mapFromServer(seedState, payload) {
       onboarded: Boolean(profile.onboarded),
     };
     next.reference = reference ?? next.reference ?? DEFAULT_REFERENCE;
-    next.habits = habits ?? next.habits;
+    next.habits = legacyHabits ?? next.habits;
     next.principles = principles ?? next.principles;
+  }
+
+  if (Array.isArray(payload.habits)) {
+    next.habits = Object.fromEntries(payload.habits.map((row) => ([row.id, {
+      id: row.id,
+      name: row.name,
+      emoji: row.emoji,
+      color: row.color,
+      logs: row.logs ?? {},
+      createdAt: row.created_at,
+    }])));
   }
 
   if (Array.isArray(payload.captureInbox)) {
@@ -112,6 +126,15 @@ function toServerPayload(state) {
     },
   };
 
+  const habits = Object.values(state.habits ?? {}).map((habit) => ({
+    id: habit.id,
+    name: habit.name,
+    emoji: habit.emoji ?? null,
+    color: habit.color ?? null,
+    logs: habit.logs ?? {},
+    created_at: habit.createdAt ?? new Date().toISOString(),
+  }));
+
   const captureInbox = (state.capture ?? []).map((item) => ({
     id: item.id,
     content: item.text,
@@ -156,7 +179,7 @@ function toServerPayload(state) {
     synced_at: event.synced_at ?? null,
   }));
 
-  return { profile, captureInbox, metrics, cycleTemplates, syncedEvents };
+  return { profile, captureInbox, metrics, cycleTemplates, syncedEvents, habits };
 }
 
 export function usePostgresSync({ initialState, userId }) {
@@ -186,18 +209,21 @@ export function usePostgresSync({ initialState, userId }) {
           metricsRes,
           cycleRes,
           syncedRes,
+          habitsRes,
         ] = await Promise.all([
           supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
           supabase.from('capture_inbox').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
           supabase.from('metrics').select('*').eq('user_id', userId).order('date', { ascending: true }),
           supabase.from('cycle_templates').select('*').eq('user_id', userId),
           supabase.from('synced_events').select('*').eq('user_id', userId).order('start_time', { ascending: true }),
+          supabase.from('habits').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
         ]);
 
         if (cancelled) return;
 
-        if (profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error) {
-          throw profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error;
+        const normalizedHabitsError = isMissingHabitsRelation(habitsRes.error) ? null : habitsRes.error;
+        if (profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error || normalizedHabitsError) {
+          throw profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error || normalizedHabitsError;
         }
 
         const payload = {
@@ -206,6 +232,7 @@ export function usePostgresSync({ initialState, userId }) {
           metrics: metricsRes.data ?? [],
           cycleTemplates: cycleRes.data ?? [],
           syncedEvents: syncedRes.data ?? [],
+          habits: normalizedHabitsError ? [] : (habitsRes.data ?? []),
         };
 
         setState(mapFromServer(initialState, payload));
@@ -287,6 +314,15 @@ export function usePostgresSync({ initialState, userId }) {
           if (syncedInsertError) throw syncedInsertError;
         }
 
+        const { error: habitsDeleteError } = await supabase.from('habits').delete().eq('user_id', userId);
+        if (habitsDeleteError && !isMissingHabitsRelation(habitsDeleteError)) throw habitsDeleteError;
+        if (!habitsDeleteError && payload.habits.length) {
+          const { error: habitsInsertError } = await supabase.from('habits').insert(
+            payload.habits.map((item) => ({ ...item, user_id: userId })),
+          );
+          if (habitsInsertError && !isMissingHabitsRelation(habitsInsertError)) throw habitsInsertError;
+        }
+
         setDirty(false);
         setSyncError(null);
       } catch (error) {
@@ -309,16 +345,19 @@ export function usePostgresSync({ initialState, userId }) {
           metricsRes,
           cycleRes,
           syncedRes,
+          habitsRes,
         ] = await Promise.all([
           supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
           supabase.from('capture_inbox').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
           supabase.from('metrics').select('*').eq('user_id', userId).order('date', { ascending: true }),
           supabase.from('cycle_templates').select('*').eq('user_id', userId),
           supabase.from('synced_events').select('*').eq('user_id', userId).order('start_time', { ascending: true }),
+          supabase.from('habits').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
         ]);
 
-        if (profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error) {
-          throw profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error;
+        const normalizedHabitsError = isMissingHabitsRelation(habitsRes.error) ? null : habitsRes.error;
+        if (profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error || normalizedHabitsError) {
+          throw profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error || normalizedHabitsError;
         }
 
         const payload = {
@@ -327,6 +366,7 @@ export function usePostgresSync({ initialState, userId }) {
           metrics: metricsRes.data ?? [],
           cycleTemplates: cycleRes.data ?? [],
           syncedEvents: syncedRes.data ?? [],
+          habits: normalizedHabitsError ? [] : (habitsRes.data ?? []),
         };
         setState((prev) => mapFromServer(prev, payload));
       } catch {

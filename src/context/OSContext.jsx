@@ -278,9 +278,85 @@ export function OSProvider({ children, auth }) {
   const toggleSidebar = () =>
     update((s) => ({ ...s, ui: { ...(s.ui ?? {}), sidebarOpen: !s.ui?.sidebarOpen } }));
 
+  const setProfileName = (name) => {
+    const cleanName = (name || '').trim();
+    update((s) => ({
+      ...s,
+      settings: {
+        ...(s.settings ?? {}),
+        name: cleanName,
+      },
+    }));
+  };
+
+  const seedHabits = (habits = []) => {
+    const now = new Date().toISOString();
+    const nextHabits = habits.reduce((acc, habit) => {
+      const habitId = habit.id || uid();
+      acc[habitId] = {
+        id: habitId,
+        name: habit.name,
+        emoji: habit.emoji || '✓',
+        color: habit.color || '#6366f1',
+        logs: habit.logs || {},
+        createdAt: habit.createdAt || now,
+      };
+      return acc;
+    }, {});
+
+    update((s) => ({
+      ...s,
+      habits: nextHabits,
+    }));
+  };
+
+  const setCycleGoals = (goals = []) => {
+    const normalized = [0, 1, 2].map((index) => (goals[index] || '').trim());
+    update((s) => ({
+      ...s,
+      settings: {
+        ...(s.settings ?? {}),
+        cycleGoals: normalized,
+      },
+    }));
+  };
+
+  const setStarterPrinciples = (titles = []) => {
+    const now = new Date().toISOString();
+    const nextPrinciples = titles.reduce((acc, title, index) => {
+      const principle = makePrinciple(title, 'Selected during onboarding.', 'Starter');
+      acc[principle.id] = {
+        ...principle,
+        order: index,
+        createdAt: now,
+      };
+      return acc;
+    }, {});
+
+    update((s) => ({
+      ...s,
+      principles: nextPrinciples,
+    }));
+  };
+
+  const completeOnboarding = () => {
+    update((s) => ({
+      ...s,
+      settings: {
+        ...(s.settings ?? {}),
+        onboarded: true,
+      },
+    }));
+    if (typeof auth?.refreshProfile === 'function') {
+      auth.refreshProfile().catch(() => {});
+    }
+  };
+
+  const authToken = auth?.token ?? null;
+
   const syncGoogleCalendar = async ({ force = false } = {}) => {
-    if (!auth?.token) throw new Error('Google sync API is not configured for Supabase session tokens yet.');
-    const response = await api.googleSync(auth.token, { force });
+    if (!authToken) throw new Error('Missing Supabase session token. Please sign in again.');
+    const response = await api.googleSync(authToken, { force });
     update((s) => ({
       ...s,
       syncedEvents: response.events ?? s.syncedEvents ?? [],
@@ -314,8 +390,8 @@ export function OSProvider({ children, auth }) {
   };
 
   const connectGoogleCalendar = async ({ accessToken, refreshToken, email, expiresAt }) => {
-    if (!auth?.token) throw new Error('Google sync API is not configured for Supabase session tokens yet.');
-    await api.googleConnect(auth.token, { accessToken, refreshToken, email, expiresAt });
+    if (!authToken) throw new Error('Missing Supabase session token. Please sign in again.');
+    await api.googleConnect(authToken, { accessToken, refreshToken, email, expiresAt });
     update((s) => ({
       ...s,
       settings: {
@@ -330,8 +406,8 @@ export function OSProvider({ children, auth }) {
   };
 
   const disconnectGoogleCalendar = async () => {
-    if (!auth?.token) throw new Error('Google sync API is not configured for Supabase session tokens yet.');
-    await api.googleDisconnect(auth.token);
+    if (!authToken) throw new Error('Missing Supabase session token. Please sign in again.');
+    await api.googleDisconnect(authToken);
     update((s) => ({
       ...s,
       syncedEvents: [],
@@ -353,8 +429,8 @@ export function OSProvider({ children, auth }) {
   };
 
   const fetchGoogleCalendars = async () => {
-    if (!auth?.token) throw new Error('Google sync API is not configured for Supabase session tokens yet.');
-    const payload = await api.googleCalendars(auth.token);
+    if (!authToken) throw new Error('Missing Supabase session token. Please sign in again.');
+    const payload = await api.googleCalendars(authToken);
     return payload.calendars ?? [];
   };
 
@@ -451,7 +527,12 @@ export function OSProvider({ children, auth }) {
     syncLoading,
     syncError,
     authUser: auth?.user ?? null,
+    authSession: auth?.session ?? null,
+    authToken,
+    linkedProviders: auth?.linkedProviders ?? [],
     signOut: auth?.signOut ?? (() => {}),
+    linkGoogleIdentity: auth?.linkGoogleIdentity ?? (async () => {}),
+    googleProviderSession: auth?.googleProviderSession ?? null,
     update,
     resetToSeed,
     addCapture,
@@ -487,6 +568,11 @@ export function OSProvider({ children, auth }) {
     currentWeekKey,
     setActiveModule,
     toggleSidebar,
+    setProfileName,
+    seedHabits,
+    setCycleGoals,
+    setStarterPrinciples,
+    completeOnboarding,
     syncGoogleCalendar,
     saveGoogleCalendarSelection,
     applyGoogleRecurringImports,

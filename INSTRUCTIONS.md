@@ -2,33 +2,27 @@
 
 ## 1. What this project is
 
-Lifestyle OS is a single-page React app that acts like a personal operating system for planning and execution. It combines:
+Lifestyle OS is a single-page React app for personal planning and execution with a cycle-based schedule, daily metrics, habits, journaling, principles, and a health-oriented briefing surface.
 
-- Dashboard daily briefing and focus tools
-- Capture inbox and project/task management
-- Rotating A/B/C weekly cycle templates
-- Metrics, habits, journaling, CRM, principles, and weekly review workflows
-- Vitality strategy routing (workout routines + meal protocols)
-
-The app is user-first and persists signed-in user data in PostgreSQL through a small Express API. Theme and token preferences remain browser-local where appropriate.
+Current architecture is Supabase-first for auth and persisted app state. A separate Express server still exists for API endpoints (health checks, legacy auth/state routes, and Google Calendar sync endpoints).
 
 ## 2. Stack and runtime
 
-- Framework: React 18
-- Build tool: Vite 5
+- Frontend: React 18 + Vite 5
 - Styling: Tailwind CSS + CSS variable design tokens
 - Icons: lucide-react
 - State: React Context + custom hooks
-- Persistence: PostgreSQL-backed API for signed-in data, browser-local storage for auth token/theme
-
-Core dependencies are defined in package.json.
+- Primary persistence: Supabase client (`@supabase/supabase-js`) from the browser
+- Secondary backend: Node.js + Express + PostgreSQL (`pg`) for server routes and Google Calendar sync
 
 ## 3. Setup and run
 
 ### Prerequisites
 
-- Node.js 18+ (Node 20 recommended)
+- Node.js 18+
 - npm
+- PostgreSQL (required for Express server routes)
+- Supabase project (required for app auth + sync in current UI flow)
 
 ### Install
 
@@ -36,50 +30,84 @@ Core dependencies are defined in package.json.
 npm install
 ```
 
-### Start development server
+### Frontend dev server
 
 ```bash
 npm run dev
 ```
 
-### Build production bundle
-
-```bash
-npm run build
-```
-
-### Start backend API
+### Backend API server
 
 ```bash
 npm run api
 ```
 
-### Start full app in development
+### Run both in development
 
 ```bash
 npm run dev:full
 ```
 
-### Start production server after build
+### Production build
+
+```bash
+npm run build
+```
+
+### Production server (after build)
 
 ```bash
 npm start
 ```
 
-### Preview production build
+### Preview frontend build only
 
 ```bash
 npm run preview
 ```
 
-## 4. Project structure
+### Tests
+
+```bash
+npm test
+```
+
+## 4. Environment configuration
+
+The project currently needs both Supabase frontend env vars and backend env vars if server routes are used.
+
+### Frontend env vars
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_API_URL` (optional, defaults to `/api` and used by `src/lib/api.js`)
+
+### Backend env vars
+
+- `API_PORT` (or `PORT` in production)
+- `CLIENT_ORIGIN`
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `DATABASE_SSL`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+
+Reference values are in `.env.example`.
+
+## 5. Project structure
 
 ```text
 index.html
 package.json
-vite.config.js
-tailwind.config.js
-postcss.config.js
+README.md
+INSTRUCTIONS.md
+server/
+  index.js
+  auth.js
+  db.js
+  googleCalendarService.js
+  sql/
+    001_phase7_core.sql
 src/
   main.jsx
   App.jsx
@@ -87,327 +115,255 @@ src/
   context/
     OSContext.jsx
   hooks/
+    useSupabaseAuth.js
+    usePostgresSync.js
     useDarkMode.js
     useKeyboard.js
-    useLocalStorage.js
-    useOSState.js
+  lib/
+    supabase.js
+    api.js
   utils/
     schema.js
     cycleEngine.js
-    helpers.js
-  components/
-    modules/
-      ...feature modules...
+    cycleEngine.test.js
+  components/modules/
+    AuthScreen.jsx
+    DashboardModule.jsx
+    CaptureModule.jsx
+    CycleModule.jsx
+    MetricsModule.jsx
+    ReferenceModule.jsx
+    PrinciplesModule.jsx
+    WeeklyReviewModule.jsx
+    HabitsModule.jsx
+    JournalModule.jsx
+    SettingsModule.jsx
+    OnboardingFlow.jsx
+    ...
 ```
 
-## 5. Application architecture
+## 6. Application architecture
 
 ### Root flow
 
-1. src/main.jsx renders App.
-2. App wraps AppShell with OSProvider.
-3. OSProvider exposes global state and all mutations through context.
-4. AppShell selects the active module and renders desktop/mobile navigation.
+1. `src/main.jsx` renders `App`.
+2. `App` initializes auth via `useSupabaseAuth`.
+3. If no Supabase session, `AuthScreen` is shown.
+4. If authenticated but not onboarded, `OnboardingFlow` is shown.
+5. Otherwise `OSProvider` wraps `AppShell`.
 
-### Module system
+### Module registry (current)
 
-Modules are registered in src/App.jsx in two arrays:
+Defined in `src/App.jsx`.
 
-- CORE_MODULES
-- SYSTEM_MODULES
+- `CORE_MODULES`
+  - dashboard
+  - capture
+  - cycles
+  - metrics
+  - health (uses `ReferenceModule`)
+  - principles
+- `SYSTEM_MODULES`
+  - review
+  - habits
+  - journal
+- `HIDDEN_MODULES`
+  - settings
 
-Each module entry defines:
+Bottom mobile navigation currently includes only:
 
-- id
-- label
-- icon
-- Component
-
-This registry controls navigation, active module rendering, and command palette targeting.
-
-### State model
-
-Single global state object lives in OSContext and includes:
-
+- dashboard
 - capture
-- projects
-- tasks
-- metrics
-- crm
 - cycles
-- cyclePlans
-- overrides
-- focus3
+- health
 - principles
-- reviews
-- habits
-- reference
-- settings
-- ui
 
-Seed/default shape is defined in src/utils/schema.js (SEED_STATE).
+### Keyboard shortcuts (current)
 
-## 6. Persistence and data lifecycle
+Defined through `useKeyboard` in `AppShell`:
 
-### Auth and persistence
+- `cmd+k`: toggle command palette
+- `escape`: close palette and mobile drawer
+- `g d`: dashboard
+- `g i`: capture
+- `g c`: cycles
+- `g p`: principles
+- `g m`: metrics
+- `g h`: health
+- `g w`: weekly review
+- `cmd+,`: settings
+- `g j`: journal
 
-- Signed-in data is fetched from and written to PostgreSQL through the Express API.
-- The auth token is stored in browser localStorage under a token key.
-- Theme preference remains browser-local.
-- The API uses `DATABASE_URL` and `JWT_SECRET` from `.env`.
-- The server honors `PORT` first, then `API_PORT`, so production builders can inject their own runtime port.
-- `CLIENT_ORIGIN` is optional for same-origin production deployments.
-- Enable `DATABASE_SSL=true` only when the Postgres server requires TLS.
+Note: `cmd` also works with Ctrl.
 
-### Backend run modes
+## 7. State model (source of truth)
 
-- Development API only: `npm run api`
-- Full development stack: `npm run dev:full`
-- Production server after frontend build: `npm start`
+Primary seed shape is `SEED_STATE` in `src/utils/schema.js`.
 
-### Production builder guidance
+Top-level state keys currently include:
 
-- Use the repo `Dockerfile` as the production builder when the platform supports it.
-- The Docker image builds the frontend and serves both the UI and API from the same Express process.
-- If a hosting platform only allows a static publish directory, `dist/` is the frontend output, but you will still need a separate backend service.
+- `cycleStartDate`
+- `cycles`
+- `overrides`
+- `capture`
+- `metrics`
+- `reference`
+- `cyclePlans`
+- `ui`
+- `principles`
+- `reviews`
+- `habits`
+- `journal`
+- `settings`
+- `syncedEvents`
 
-### Persistence behavior
+State mutations and selectors are centralized in `src/context/OSContext.jsx`.
 
-- `useApiAuth` bootstraps the current user session from a browser token.
-- `usePostgresSync` hydrates state from the API after login.
-- Writes are optimistic and flushed to the API in the background.
-- The sync hook periodically refreshes from the server to pick up external changes.
+## 8. Data and persistence lifecycle
 
-### Important merge behavior
+### Current primary path
 
-When loading API state, the app merges the server payload into the current seed shape so schema additions remain safe across releases.
+- Auth: Supabase auth (`useSupabaseAuth`)
+- State hydration/sync: direct Supabase table reads and writes (`usePostgresSync`)
+- App does optimistic local updates and flushes changes with a short debounce
+- Polling refresh runs periodically when state is clean
 
-## 7. Styling and theme system
+### Supabase tables actively used by frontend sync
 
-- Global design tokens are in src/index.css using CSS variables.
-- Light theme tokens are under :root.
-- Dark theme tokens are under html.dark.
-- useDarkMode toggles html.dark and stores preference in localStorage key os-dark-mode.
-- Tailwind config safelists token-related utility classes and dynamic status colors.
+- `profiles`
+- `capture_inbox`
+- `metrics`
+- `cycle_templates`
+- `synced_events`
 
-## 8. Keyboard shortcuts
+### Mapping behavior
 
-Global shortcuts are wired through useKeyboard in AppShell:
+- `mapFromServer` merges database payload into seed state
+- `toServerPayload` composes complete payload slices before persistence
+- Sync currently uses delete-and-reinsert for several table slices (capture, metrics, cycle templates, synced events)
 
-- cmd+k: open/close command palette
-- escape: close palette and mobile drawer
-- g d: dashboard
-- g i: inbox/capture
-- g c: cycles
-- g p: projects
-- g m: metrics
-- g r: CRM
-- g h: habits
-- g w: weekly review
-- g t: focus timer
-- cmd+,: settings
-- g j: journal
+## 9. Backend and API notes
 
-Note: cmd also accepts ctrl via the hook implementation.
+`server/index.js` currently provides:
 
-## 9. Feature module reference
+- `/api/health`
+- Legacy auth routes (`/api/auth/*`)
+- Legacy bulk state routes (`/api/state` GET/PUT)
+- Google integration routes:
+  - `/api/google/status`
+  - `/api/google/connect`
+  - `/api/google/disconnect`
+  - `/api/google/calendars`
+  - `/api/google/sync`
 
-### Main navigation modules
-
-- DashboardModule: simplified daily briefing for physical focus and quick capture
-- CaptureModule: inbox capture and processing
-- CycleModule: week/today/template views for cycle planning
-- ProjectsModule: project and task management
-- MetricsModule: daily tracking and trends
-- CRMModule: contact tracking and overdue follow-up
-
-### System modules
-
-- ProjectEngine: alternate project execution board
-- PrinciplesModule: personal principles knowledge base
-- ReferenceModule: workout library, meal protocols, recovery protocols, pantry essentials
-- WeeklyReviewModule: structured weekly reflection
-- HabitsModule: habit tracking and streaks
-- DataPortal: import/export/reset and storage insights
-- FocusTimer: timer with task linking and logs
-- SettingsModule: user and notification preferences
-- JournalModule: date-based journaling with mood
-
-### Sub-components used by modules
-
-- QuickCapture
-- WeekView
-- TodayView
-- TemplateEditor
-- EventBlock
-- CommandPalette
-- OnboardingFlow
+Important: the frontend auth token is Supabase session-based. `OSContext` currently guards Google calls with a warning/error message indicating these routes are not fully wired for Supabase session tokens yet. Treat Google sync as partially integrated and validate auth compatibility before expanding this area.
 
 ## 10. Cycle engine rules
 
-Cycle logic is implemented in src/utils/cycleEngine.js.
+Implemented in `src/utils/cycleEngine.js`.
 
-### Core concepts
+Core behavior:
 
-- Three-week rotating cycle letters: A, B, C
-- cycleStartDate defines origin of Week A
-- Week alignment is Monday-based
+- Rotating cycle weeks: A/B/C
+- Monday-based week alignment
+- Date resolution precedence:
+  1. day cancel override
+  2. full replacement override blocks
+  3. template blocks + block overrides + added blocks
+- Deterministic sorting by start time
 
-### Resolution precedence for a day
+Daily physical briefing uses cycle plans + reference data and can downgrade high-intensity training when energy is below threshold.
 
-1. Full-day delete override
-2. Full replacement override blocks
-3. Template blocks for cycle letter/day, then block-level overrides, then added blocks
+## 11. Styling and theme system
 
-Resolved events are sorted by start time.
-
-### Physical briefing resolver (Phase 6)
-
-Cycle logic also resolves a daily physical briefing in src/utils/cycleEngine.js via resolvePhysicalBriefing:
-
-- Determines current cycle letter/day from cycleStartDate
-- Maps day -> scheduled workout routine from cyclePlans
-- Maps week letter -> meal protocol from cyclePlans
-- Applies dynamic energy override:
-  - if energy is below settings.energyLowThreshold
-  - and scheduled workout intensity is High
-  - dashboard/today briefing shows a recovery protocol instead
-
-This resolver is exposed through OSContext selector: selectors.dailyBriefing(dateKey).
-
-### Vitality strategy data model
-
-Reference data is stored in state.reference and seeded in src/utils/schema.js:
-
-- workoutLibrary
-- mealProtocols
-- recoveryProtocols
-- pantryEssentials
-
-Cycle mapping data is stored in state.cyclePlans:
-
-- A/B/C week keys
-- workoutsByDay (Mon-Sun -> workout id)
-- mealProtocolId (per week)
-
-### Backend migration notes (Phase 7)
-
-- Authentication is email/password through the Express API.
-- User data is scoped by authenticated user ID in API queries.
-- The production server serves the built frontend from `dist/` and the API from the same process.
-- The app now uses PostgreSQL as the source of truth for signed-in user state.
-- Production containers should set `PORT` if the platform provides one; otherwise the server falls back to `API_PORT`.
-- The server applies the PostgreSQL schema automatically at startup if tables are missing.
-
-## 11. Authentication and onboarding behavior
-
-App startup checks for a valid auth session first.
-
-- If no session exists, the Login/Signup screen is shown.
-- Once authenticated, AppShell checks `state.settings.onboarded`.
-- If not true, OnboardingFlow is shown.
-- On completion, onboarding persists user setup to the API and marks onboarded true.
-
-If onboarding appears repeatedly, verify the `profiles` row is being updated in PostgreSQL.
+- Tokens are defined in `src/index.css`
+- Light tokens under `:root`
+- Dark mode under `html.dark`
+- Theme toggle handled by `useDarkMode`
+- Prefer CSS variables and existing utility patterns over hardcoded colors
 
 ## 12. How to add a new module
 
-1. Create a new component in src/components/modules.
-2. Register it in src/App.jsx inside CORE_MODULES or SYSTEM_MODULES.
-4. Add any required state/actions in OSContext if it mutates shared state.
-4. Extend SEED_STATE in src/utils/schema.js for new persisted data.
-5. If needed, add selectors in OSContext.
-6. Add command palette entries if discoverability is needed.
-7. Ensure desktop, mobile header, drawer, and bottom-nav behavior remains coherent.
+1. Add component under `src/components/modules/`.
+2. Register in `src/App.jsx` (`CORE_MODULES`, `SYSTEM_MODULES`, or `HIDDEN_MODULES`).
+3. Add/adjust state actions in `OSContext` if shared state is needed.
+4. Extend `SEED_STATE` in `src/utils/schema.js` for persisted keys.
+5. Update command palette behavior if needed.
+6. Verify desktop sidebar, mobile drawer, and mobile bottom nav behavior.
 
 ## 13. How to add new persisted data safely
 
-1. Add default key in SEED_STATE.
-2. Make all reads null-safe for older saved payloads.
-3. Add mutation functions in OSContext.
-4. Prefer immutable updates and preserve existing object keys.
-5. Test login, reload, sync refresh, and API persistence.
+1. Extend `SEED_STATE` with defaults.
+2. Add null-safe reads for migration resilience.
+3. Update both `mapFromServer` and `toServerPayload` in `usePostgresSync`.
+4. Keep updates immutable in `OSContext` actions.
+5. Test login, reload, optimistic writes, and polling refresh.
 
 ## 14. Operational notes and risks
 
-- localStorage is still used for auth token storage and theme preference, so browser storage can still affect sign-in behavior.
-- The API depends on PostgreSQL being reachable and initialized.
-- SSL is off by default; turn it on with `DATABASE_SSL=true` only for managed TLS-enabled databases.
-- Full reset in DataPortal or sidebar reset now only resets the current app state; production data remains in PostgreSQL.
-- If you later re-enable import/export, validate structure before sending it to the API.
+- Missing Supabase env vars does not hard-crash boot, but auth/persistence flows will fail.
+- Backend routes depend on PostgreSQL availability and schema setup.
+- Express auto-runs `server/sql/001_phase7_core.sql` at startup.
+- Google integration stores sensitive tokens in `profiles`; handle carefully in production environments.
+- Some docs and historical notes may still reference `useApiAuth`; the active flow is `useSupabaseAuth`.
 
 ## 15. Developer workflow recommendations
 
 ### When editing global state
 
-- Keep all state writes inside OSContext actions.
-- Avoid direct mutation in module components.
-- Update seed schema, API mappings, and selectors together.
+- Keep all shared-state writes inside `OSContext` actions.
+- Do not mutate state directly in module components.
+- Keep schema defaults, sync mappings, and selectors aligned.
 
-### When editing UI
+### When editing auth/onboarding
 
-- Use tokenized colors from src/index.css variables.
-- Avoid hardcoded colors unless semantically justified.
-- Verify light/dark contrast in both themes.
+- Preserve `useSupabaseAuth` as the entrypoint for session and profile lifecycle.
+- Keep onboarding persisted through `profiles` (`onboarded`, settings, first name).
 
-### When editing cycles
+### When editing sync
 
-- Preserve pure utility behavior in cycleEngine.
-- Keep date handling local-time based and deterministic.
-- Add tests for week transitions and override precedence.
-- Keep any mapping between cycle weeks and calendar days in a separate pure function so it can be unit tested in isolation.
-- Specifically test Monday-based boundaries so a "Monday Week A" event cannot spill into "Monday Week B".
+- Maintain clean mapping boundaries in `usePostgresSync`.
+- Preserve debounce + dirty-flag behavior.
+- Keep background polling guarded to avoid stomping unsaved local changes.
 
-### When editing calendar sync
+### When editing cycle logic
 
-- Prefer explicit fetches on Dashboard mount and on a user-initiated Sync action.
-- Treat webhook or push-notification refresh as optional infrastructure, not the primary local-first sync path.
-- Never persist Google events for other people in a shared calendar; only store events where the signed-in user is the creator or an attendee.
+- Keep `cycleEngine` functions pure and deterministic.
+- Add/update tests in `src/utils/cycleEngine.test.js` for boundary conditions.
 
-### When editing backend or auth
+### When editing backend routes
 
-- Keep all user-scoped data filtered by the authenticated user ID.
-- Store passwords hashed with bcrypt.
-- Serve the frontend from Express in production after running `npm run build`.
+- Scope all reads and writes by authenticated user identity.
+- Avoid exposing Google tokens in responses or logs.
 
-## 16. Suggested test checklist (manual)
+## 16. Suggested manual test checklist
 
-- App loads to the login screen when unauthenticated.
-- Login and signup both create authenticated sessions.
-- Reload keeps the session and shows synced data.
-- cmd+k opens command palette and navigation works.
-- Mobile drawer and bottom navigation are usable.
-- Theme toggle updates html.dark and persists.
-- Capture to project promotion creates tasks correctly.
-- Cycle day overrides appear in week and today views.
-- Cycle template editor saves workout-per-day + meal protocol mappings.
-- Dashboard shows: Today's Session + workout note + weekly meal protocol.
-- If energy is below threshold and scheduled routine is High intensity, dashboard shows recovery protocol instead.
-- Reference module lists workouts, meal protocols, recovery protocols, and pantry essentials.
-- API writes persist after refresh.
-- Sign out returns to the login screen.
+- App shows auth screen when unauthenticated.
+- Sign in/up through Supabase works.
+- Onboarding is shown once and persists.
+- Reload restores session and state.
+- Command palette and shortcut navigation works.
+- Mobile drawer and bottom nav are usable.
+- Theme toggle persists.
+- Capture, metrics, cycle plans, principles, habits, journal, and reviews persist.
+- Daily briefing reflects cycle plan and low-energy fallback logic.
+- `npm test` passes (`cycleEngine` coverage).
+- If using backend routes, `/api/health` is healthy and DB schema initializes.
 
-## 17. Build and deployment notes
+## 17. Quick file map
 
-- Vite build output is served by the Express server in production.
-- The backend API and PostgreSQL database are required for authenticated use.
-- The production entrypoint is `npm start` after `npm run build`.
-
-## 18. Quick file map for key maintenance points
-
-- src/App.jsx: app shell, module registry, global navigation, shortcut wiring
-- src/context/OSContext.jsx: single source of truth for state and mutations
-- src/utils/schema.js: data factories, constants, seed defaults
-- src/utils/cycleEngine.js: cycle week/date/block resolution utilities + daily physical briefing resolver
-- src/hooks/useApiAuth.js: login/signup/session bootstrap
-- src/hooks/usePostgresSync.js: API hydration and optimistic syncing
-- src/index.css: design tokens, utility aliases, animation definitions
-- src/components/modules/TemplateEditor.jsx: cycle events + vitality mapping editor
-- src/components/modules/ReferenceModule.jsx: static strategy references (workouts, meals, pantry)
-- src/components/modules/DashboardModule.jsx: daily briefing surface
-- server/index.js: PostgreSQL API and production static server
-- server/sql/001_phase7_core.sql: database schema
+- `src/App.jsx`: module registry, shell layout, auth/onboarding gates
+- `src/context/OSContext.jsx`: shared state actions and selectors
+- `src/hooks/useSupabaseAuth.js`: session/profile lifecycle
+- `src/hooks/usePostgresSync.js`: Supabase hydration, optimistic writes, refresh
+- `src/lib/supabase.js`: Supabase client bootstrap
+- `src/lib/api.js`: API helper (currently used for google endpoints)
+- `src/utils/schema.js`: seed defaults, factories, constants
+- `src/utils/cycleEngine.js`: cycle/day resolution and briefing logic
+- `src/components/modules/SettingsModule.jsx`: settings and integration controls
+- `server/index.js`: Express API and production static hosting
+- `server/sql/001_phase7_core.sql`: PostgreSQL schema
 
 ---
 
-Use this file as the primary orientation and contributor guide when expanding the app.
+Use this file as the authoritative contributor orientation document for the current codebase state.
