@@ -43,6 +43,7 @@ export function useSupabaseAuth() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   const refreshProfile = useCallback(async (nextUser = user) => {
     if (!nextUser?.id) {
@@ -54,7 +55,12 @@ export function useSupabaseAuth() {
     try {
       const row = await ensureProfile(nextUser);
       setProfile(row);
+      setAuthError(null);
       return row;
+    } catch (error) {
+      const message = error?.message || 'Failed to load profile.';
+      setAuthError(message);
+      throw error;
     } finally {
       setProfileLoading(false);
     }
@@ -64,24 +70,36 @@ export function useSupabaseAuth() {
     let mounted = true;
 
     async function bootstrap() {
-      const { data, error } = await supabase.auth.getSession();
-      if (!mounted) return;
-      if (error) {
-        setLoading(false);
-        return;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (error) {
+          setAuthError(error.message || 'Failed to restore session.');
+          return;
+        }
+
+        const nextSession = data?.session ?? null;
+        setSession(nextSession);
+        setUser(nextSession?.user ?? null);
+
+        if (nextSession?.user) {
+          try {
+            await refreshProfile(nextSession.user);
+          } catch (profileError) {
+            console.error('Profile bootstrap failed', profileError);
+            if (mounted) setProfile(null);
+          }
+        } else {
+          setProfile(null);
+        }
+      } catch (error) {
+        if (mounted) {
+          setAuthError(error?.message || 'Authentication bootstrap failed.');
+        }
+      } finally {
+        if (mounted) setLoading(false);
       }
-
-      const nextSession = data?.session ?? null;
-      setSession(nextSession);
-      setUser(nextSession?.user ?? null);
-
-      if (nextSession?.user) {
-        await refreshProfile(nextSession.user);
-      } else {
-        setProfile(null);
-      }
-
-      if (mounted) setLoading(false);
     }
 
     bootstrap();
@@ -91,9 +109,13 @@ export function useSupabaseAuth() {
       setUser(nextSession?.user ?? null);
 
       if (nextSession?.user) {
-        refreshProfile(nextSession.user);
+        refreshProfile(nextSession.user).catch((error) => {
+          console.error('Profile refresh failed after auth state change', error);
+          setProfile(null);
+        });
       } else {
         setProfile(null);
+        setAuthError(null);
       }
     });
 
@@ -174,6 +196,7 @@ export function useSupabaseAuth() {
     profile,
     loading,
     profileLoading,
+    authError,
     signIn,
     signUp,
     signInWithGoogle,
@@ -186,6 +209,7 @@ export function useSupabaseAuth() {
     profile,
     loading,
     profileLoading,
+    authError,
     signIn,
     signUp,
     signInWithGoogle,
