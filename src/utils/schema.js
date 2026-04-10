@@ -160,7 +160,7 @@ export const SEED_STATE = {
     name: '',
     wakeTime: '07:00',
     sleepTarget: 8,
-    cycleGoals: ['', '', ''],
+    cycleGoals: '',
     metricTargets: {
       sleepHours: 8,
     },

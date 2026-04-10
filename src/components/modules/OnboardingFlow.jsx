@@ -1,32 +1,48 @@
 import { useMemo, useState } from 'react';
-import { BookOpen, Check, Droplets, Footprints, Sparkles, Target } from 'lucide-react';
+import { Check, Droplets, Footprints, Sparkles, Target, Zap } from 'lucide-react';
 import { useOS } from '../../context/OSContext';
 import { uid } from '../../utils/schema';
 
 const STEPS = [
-  { id: 'identity', title: 'What should we call you?', subtitle: 'This is used in your dashboard and account profile.' },
-  { id: 'habits', title: 'Pick your starter habits', subtitle: 'Select as many as you want. These are seeded into habit tracking.' },
-  { id: 'goals', title: 'Top 3 goals for this cycle', subtitle: 'Keep goals short and actionable.' },
-  { id: 'principles', title: 'Choose exactly 3 core principles', subtitle: 'These will seed your Principles module.' },
-  { id: 'launch', title: 'Launch Lifestyle OS', subtitle: 'Confirm your setup and enter the dashboard.' },
+  { id: 'identity', title: 'What should we call you?', subtitle: 'Name is the only required field for setup.' },
+  { id: 'habits', title: 'Optional: Seed hard-mode habits', subtitle: 'Pick any habits you want to start with, or skip this step.' },
+  { id: 'goals', title: 'Optional: Add cycle goals', subtitle: 'Use this freeform area for as many goals as you want.' },
+  { id: 'principles', title: 'Optional: Seed core principles', subtitle: 'Pick any principles now, or add them later.' },
+  { id: 'launch', title: 'Launch Lifestyle OS', subtitle: 'Confirm setup and enter the dashboard.' },
 ];
 
 const HABIT_LIBRARY = [
-  { key: 'drink-water', name: 'Drink Water', emoji: '💧', color: '#0ea5e9', icon: Droplets },
-  { key: 'morning-walk', name: 'Morning Walk', emoji: '🚶', color: '#10b981', icon: Footprints },
-  { key: 'deep-work', name: 'Deep Work', emoji: '🧠', color: '#6366f1', icon: Target },
-  { key: 'reading', name: 'Reading', emoji: '📚', color: '#f59e0b', icon: BookOpen },
+  { key: 'cold-shower', name: 'Cold shower', emoji: '🧊', color: '#0ea5e9', icon: Droplets },
+  { key: 'no-phone-30', name: 'No phone first 30 mins of the day', emoji: '📵', color: '#f97316', icon: Zap },
+  { key: 'morning-sunlight', name: 'Morning Sunlight', emoji: '☀️', color: '#f59e0b', icon: Footprints },
+  { key: 'daily-deep-work', name: 'Daily Deep Work', emoji: '🧠', color: '#6366f1', icon: Target },
 ];
 
 const STARTER_PRINCIPLES = [
-  { key: 'quality', title: 'Quality over Quantity', body: 'Do fewer things with complete attention and high standards.', category: 'Productivity' },
-  { key: 'ownership', title: 'Extreme Ownership', body: 'Assume responsibility for outcomes instead of blaming context.', category: 'General' },
-  { key: 'slow-smooth', title: 'Slow is Smooth', body: 'Move deliberately first; speed follows from consistency.', category: 'Productivity' },
-  { key: 'sleep-weapon', title: 'Sleep is a Performance Tool', body: 'Protect sleep like a strategic asset.', category: 'Health' },
-  { key: 'hard-conversations', title: 'Hard Conversations Early', body: 'Address tension while it is still small and solvable.', category: 'Relationships' },
-  { key: 'systems-win', title: 'Systems Beat Motivation', body: 'Design defaults that make the right action easier.', category: 'Productivity' },
-  { key: 'single-task', title: 'Single-task First', body: 'Work one meaningful thing to completion before switching.', category: 'General' },
-  { key: 'long-term', title: 'Long-term over Immediate', body: 'Optimize for compounding outcomes, not quick relief.', category: 'Finance' },
+  {
+    key: 'two-minute-rule',
+    title: 'The 2 Minute Rule',
+    body: 'If it takes less than two minutes, do it now.',
+    category: 'Productivity',
+  },
+  {
+    key: 'extreme-ownership',
+    title: 'Extreme Ownership',
+    body: 'Take full responsibility for outcomes and standards.',
+    category: 'General',
+  },
+  {
+    key: 'done-over-perfect',
+    title: 'Done is better than perfect',
+    body: 'Ship and iterate instead of waiting for flawless.',
+    category: 'Productivity',
+  },
+  {
+    key: 'seek-discomfort',
+    title: 'Seek discomfort',
+    body: 'Choose growth over convenience when it matters.',
+    category: 'General',
+  },
 ];
 
 function StepDots({ current }) {
@@ -55,13 +71,10 @@ export default function OnboardingFlow() {
 
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [firstName, setFirstNameInput] = useState(state.settings?.name ?? '');
   const [selectedHabitKeys, setSelectedHabitKeys] = useState([]);
-  const [goals, setGoals] = useState(() => {
-    const existing = Array.isArray(state.settings?.cycleGoals) ? state.settings.cycleGoals.slice(0, 3) : [];
-    while (existing.length < 3) existing.push('');
-    return existing;
-  });
+  const [goalsText, setGoalsText] = useState(typeof state.settings?.cycleGoals === 'string' ? state.settings.cycleGoals : '');
   const [selectedPrincipleKeys, setSelectedPrincipleKeys] = useState([]);
 
   const current = STEPS[step];
@@ -79,8 +92,6 @@ export default function OnboardingFlow() {
 
   const canContinue = () => {
     if (current.id === 'identity') return Boolean(firstName.trim());
-    if (current.id === 'goals') return goals.every((goal) => Boolean(goal.trim()));
-    if (current.id === 'principles') return selectedPrincipleKeys.length === 3;
     return true;
   };
 
@@ -99,12 +110,12 @@ export default function OnboardingFlow() {
         logs: {},
         createdAt: new Date().toISOString(),
       }));
-      setHabits(mappedHabits);
+      if (mappedHabits.length) setHabits(mappedHabits);
       return;
     }
 
     if (current.id === 'goals') {
-      setCycleGoals(goals);
+      setCycleGoals(goalsText);
       return;
     }
 
@@ -117,17 +128,25 @@ export default function OnboardingFlow() {
         order: index,
         createdAt: new Date().toISOString(),
       }));
-      setPrinciples(mappedPrinciples);
+      if (mappedPrinciples.length) setPrinciples(mappedPrinciples);
     }
   };
 
   const goNext = async () => {
     if (!canContinue()) return;
 
+    setError('');
+
     if (isLast) {
       setSaving(true);
-      setOnboarded(true);
-      setActiveModule('dashboard');
+      try {
+        await setOnboarded(true);
+        setActiveModule('dashboard');
+      } catch (nextError) {
+        setError(nextError?.message || 'Failed to complete onboarding.');
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
@@ -142,11 +161,15 @@ export default function OnboardingFlow() {
   };
 
   const togglePrinciple = (key) => {
-    setSelectedPrincipleKeys((prev) => {
-      if (prev.includes(key)) return prev.filter((value) => value !== key);
-      if (prev.length >= 3) return prev;
-      return [...prev, key];
-    });
+    setSelectedPrincipleKeys((prev) => (
+      prev.includes(key) ? prev.filter((value) => value !== key) : [...prev, key]
+    ));
+  };
+
+  const skipStep = () => {
+    if (isLast) return;
+    if (current.id === 'identity') return;
+    setStep((prev) => prev + 1);
   };
 
   return (
@@ -154,14 +177,24 @@ export default function OnboardingFlow() {
       <div className="w-full max-w-2xl space-y-8">
         <div className="flex items-center justify-between">
           <StepDots current={step} />
-          {step > 0 ? (
-            <button
-              onClick={() => setStep((prev) => prev - 1)}
-              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            >
-              Back
-            </button>
-          ) : null}
+          <div className="flex items-center gap-3">
+            {current.id !== 'identity' && !isLast ? (
+              <button
+                onClick={skipStep}
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Skip
+              </button>
+            ) : null}
+            {step > 0 ? (
+              <button
+                onClick={() => setStep((prev) => prev - 1)}
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Back
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className="space-y-5">
@@ -198,7 +231,7 @@ export default function OnboardingFlow() {
                         <span className="w-9 h-9 rounded-xl bg-white/80 flex items-center justify-center text-lg">{habit.emoji}</span>
                         <div>
                           <p className="text-sm font-semibold text-[var(--text-primary)]">{habit.name}</p>
-                          <p className="text-[11px] text-[var(--text-muted)] inline-flex items-center gap-1"><Icon size={12} /> Starter habit</p>
+                          <p className="text-[11px] text-[var(--text-muted)] inline-flex items-center gap-1"><Icon size={12} /> Hard mode habit</p>
                         </div>
                       </div>
                       {selected ? <Check size={16} className="text-[var(--accent-indigo)]" /> : null}
@@ -210,27 +243,18 @@ export default function OnboardingFlow() {
           ) : null}
 
           {current.id === 'goals' ? (
-            <div className="space-y-2.5">
-              {goals.map((goal, idx) => (
-                <input
-                  key={`goal-${idx + 1}`}
-                  type="text"
-                  value={goal}
-                  onChange={(e) => {
-                    const next = [...goals];
-                    next[idx] = e.target.value;
-                    setGoals(next);
-                  }}
-                  placeholder={`Goal ${idx + 1}`}
-                  className="input-base"
-                />
-              ))}
-            </div>
+            <textarea
+              rows={6}
+              value={goalsText}
+              onChange={(e) => setGoalsText(e.target.value)}
+              placeholder={'Examples:\n- Close all inbox items\n- 20 deep work blocks\n- Sleep before 11pm'}
+              className="input-base resize-y leading-relaxed"
+            />
           ) : null}
 
           {current.id === 'principles' ? (
             <div className="space-y-3">
-              <p className="text-xs text-[var(--text-muted)]">Selected {selectedPrincipleKeys.length}/3</p>
+              <p className="text-xs text-[var(--text-muted)]">Selected {selectedPrincipleKeys.length}</p>
               <div className="grid gap-2">
                 {STARTER_PRINCIPLES.map((principle) => {
                   const selected = selectedPrincipleKeys.includes(principle.key);
@@ -258,10 +282,14 @@ export default function OnboardingFlow() {
             <div className="card px-4 py-4 space-y-3">
               <p className="text-sm text-[var(--text-secondary)]">Name: {firstName.trim() || 'Not set'}</p>
               <p className="text-sm text-[var(--text-secondary)]">Habits selected: {selectedHabitKeys.length}</p>
-              <p className="text-sm text-[var(--text-secondary)]">Goals set: {goals.filter((goal) => goal.trim()).length}/3</p>
-              <p className="text-sm text-[var(--text-secondary)]">Principles selected: {selectedPrincipleKeys.length}/3</p>
+              <p className="text-sm text-[var(--text-secondary)]">Goals added: {goalsText.trim() ? 'Yes' : 'No'}</p>
+              <p className="text-sm text-[var(--text-secondary)]">Principles selected: {selectedPrincipleKeys.length}</p>
               <p className="text-xs text-[var(--text-muted)] inline-flex items-center gap-1"><Sparkles size={12} /> Everything is persisted to your account state.</p>
             </div>
+          ) : null}
+
+          {error ? (
+            <p className="text-xs text-red-500 bg-[var(--fill-red)] px-3 py-2 rounded-lg border border-red-100">{error}</p>
           ) : null}
 
           <button

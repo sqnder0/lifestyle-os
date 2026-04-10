@@ -7,7 +7,7 @@ export const DEFAULT_SETTINGS = {
   name: '',
   wakeTime: '07:00',
   sleepTarget: 8,
-  cycleGoals: ['', '', ''],
+  cycleGoals: '',
   reviewDay: 'Friday',
   reviewTime: '17:00',
   energyLowThreshold: 4,

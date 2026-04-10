@@ -24,6 +24,12 @@ create table if not exists profiles (
   updated_at timestamptz not null default now()
 );
 
+alter table profiles
+  add column if not exists google_access_token text,
+  add column if not exists google_refresh_token text,
+  add column if not exists onboarded boolean default false,
+  add column if not exists first_name text;
+
 create table if not exists capture_inbox (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth_users(id) on delete cascade,

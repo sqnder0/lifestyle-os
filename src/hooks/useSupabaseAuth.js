@@ -37,6 +37,29 @@ async function ensureProfile(user) {
   return created;
 }
 
+async function persistGoogleBridgeTokens(nextSession, profileRow) {
+  if (!nextSession?.user?.id) return;
+
+  const provider = nextSession?.user?.app_metadata?.provider;
+  if (provider !== 'google') return;
+  if (!nextSession?.provider_token) return;
+
+  const payload = {
+    id: nextSession.user.id,
+    google_access_token: nextSession.provider_token,
+    google_email: nextSession.user.email?.toLowerCase?.() ?? profileRow?.google_email ?? null,
+    google_token_expires_at: nextSession.expires_at
+      ? new Date(nextSession.expires_at * 1000).toISOString()
+      : null,
+  };
+
+  if (nextSession.provider_refresh_token) {
+    payload.google_refresh_token = nextSession.provider_refresh_token;
+  }
+
+  await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
+}
+
 export function useSupabaseAuth() {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
@@ -92,7 +115,10 @@ export function useSupabaseAuth() {
 
         if (nextSession?.user) {
           try {
-            await refreshProfile(nextSession.user);
+            const row = await refreshProfile(nextSession.user);
+            await persistGoogleBridgeTokens(nextSession, row).catch((persistError) => {
+              console.error('Google token bridge persistence failed', persistError);
+            });
           } catch (profileError) {
             console.error('Profile bootstrap failed', profileError);
             if (mounted) setProfile(null);
@@ -116,7 +142,9 @@ export function useSupabaseAuth() {
       setUser(nextSession?.user ?? null);
 
       if (nextSession?.user) {
-        refreshProfile(nextSession.user).catch((error) => {
+        refreshProfile(nextSession.user).then((row) => persistGoogleBridgeTokens(nextSession, row).catch((persistError) => {
+          console.error('Google token bridge persistence failed', persistError);
+        })).catch((error) => {
           console.error('Profile refresh failed after auth state change', error);
           setProfile(null);
         });
@@ -225,18 +253,14 @@ export function useSupabaseAuth() {
     };
   }, [session, linkedProviders]);
 
-  const completeOnboarding = useCallback(async ({ firstName, sleepTarget }) => {
+  const completeOnboarding = useCallback(async ({ firstName, settingsPatch = {} } = {}) => {
     if (!user?.id) throw new Error('No authenticated user.');
 
-    const cleanName = (firstName || '').trim();
+    const cleanName = (firstName || profile?.first_name || '').trim();
     const nextSettings = {
       ...(profile?.settings ?? {}),
       name: cleanName,
-      sleepTarget: typeof sleepTarget === 'number' ? sleepTarget : (profile?.settings?.sleepTarget ?? 8),
-      metricTargets: {
-        ...(profile?.settings?.metricTargets ?? {}),
-        sleepHours: typeof sleepTarget === 'number' ? sleepTarget : (profile?.settings?.metricTargets?.sleepHours ?? 8),
-      },
+      ...settingsPatch,
       onboarded: true,
     };
 

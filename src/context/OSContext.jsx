@@ -294,13 +294,42 @@ export function OSProvider({ children, auth }) {
   };
 
   const setCycleGoals = (goals = []) => {
-    const nextGoals = Array.isArray(goals) ? goals.slice(0, 3) : [];
-    while (nextGoals.length < 3) nextGoals.push('');
-    updateSettings({ cycleGoals: nextGoals.map((goal) => String(goal || '').trim()) });
+    if (Array.isArray(goals)) {
+      updateSettings({ cycleGoals: goals.map((goal) => String(goal || '').trim()).filter(Boolean) });
+      return;
+    }
+
+    if (typeof goals === 'string') {
+      updateSettings({ cycleGoals: goals });
+      return;
+    }
+
+    updateSettings({ cycleGoals: '' });
   };
 
-  const setOnboarded = (value) => {
-    updateSettings({ onboarded: Boolean(value) });
+  const setOnboarded = async (value) => {
+    if (!value) {
+      updateSettings({ onboarded: false });
+      return;
+    }
+
+    const currentName = (state.settings?.name || auth?.profile?.first_name || '').trim();
+    const currentGoals = state.settings?.cycleGoals ?? '';
+
+    if (typeof auth?.completeOnboarding === 'function') {
+      await auth.completeOnboarding({
+        firstName: currentName,
+        settingsPatch: {
+          cycleGoals: currentGoals,
+        },
+      });
+    }
+
+    updateSettings({ onboarded: true });
+
+    if (typeof auth?.refreshProfile === 'function') {
+      auth.refreshProfile().catch(() => {});
+    }
   };
 
   const upsertHabit = (habit) => {

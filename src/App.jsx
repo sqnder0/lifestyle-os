@@ -508,8 +508,8 @@ function AppShell() {
   );
 }
 
-function AuthenticatedWorkspace() {
-  const { state, syncLoading } = useOS();
+function AuthenticatedWorkspace({ onboardedFromProfile }) {
+  const { syncLoading } = useOS();
 
   if (syncLoading) {
     return (
@@ -519,7 +519,11 @@ function AuthenticatedWorkspace() {
     );
   }
 
-  return state.settings?.onboarded ? <AppShell /> : <OnboardingFlow />;
+  if (onboardedFromProfile) {
+    return <AppShell />;
+  }
+
+  return <OnboardingFlow />;
 }
 
 // ── Root ───────────────────────────────────────────────────────────────────
@@ -550,7 +554,7 @@ export default function App() {
 
   return (
     <OSProvider auth={auth}>
-      <AuthenticatedWorkspace />
+      <AuthenticatedWorkspace onboardedFromProfile={Boolean(auth.profile?.onboarded)} />
     </OSProvider>
   );
 }
