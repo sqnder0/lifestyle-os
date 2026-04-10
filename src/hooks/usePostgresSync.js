@@ -21,9 +21,16 @@ function mapFromServer(seedState, payload) {
   const profile = payload.profile ?? null;
   if (profile) {
     const { reference, habits, principles, ...profileSettings } = profile.settings ?? {};
+    const googleCalendar = {
+      connected: Boolean(profile?.google_access_token ?? false),
+      email: profile?.google_email ?? profileSettings?.googleCalendar?.email ?? '',
+      selectedCalendarIds: profileSettings?.googleCalendar?.selectedCalendarIds ?? [],
+      lastSyncedAt: profile?.google_last_synced_at ?? profileSettings?.googleCalendar?.lastSyncedAt ?? null,
+    };
     next.settings = {
       ...next.settings,
       ...profileSettings,
+      googleCalendar,
       name: profile.username ?? (profile.settings?.name ?? next.settings.name),
       onboarded: Boolean(profile.onboarded),
     };
@@ -75,6 +82,21 @@ function mapFromServer(seedState, payload) {
     };
   }
 
+  if (Array.isArray(payload.syncedEvents)) {
+    next.syncedEvents = payload.syncedEvents.map((row) => ({
+      google_event_id: row.google_event_id,
+      calendar_id: row.calendar_id,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      summary: row.summary,
+      raw_rrule: row.raw_rrule,
+      source_status: row.source_status,
+      created_by_email: row.created_by_email,
+      attendee_emails: Array.isArray(row.attendee_emails) ? row.attendee_emails : [],
+      synced_at: row.synced_at,
+    }));
+  }
+
   return next;
 }
 
@@ -121,7 +143,20 @@ function toServerPayload(state) {
     }
   }
 
-  return { profile, captureInbox, metrics, cycleTemplates };
+  const syncedEvents = (state.syncedEvents ?? []).map((event) => ({
+    google_event_id: event.google_event_id,
+    calendar_id: event.calendar_id ?? null,
+    start_time: event.start_time,
+    end_time: event.end_time,
+    summary: event.summary ?? '',
+    raw_rrule: event.raw_rrule ?? null,
+    source_status: event.source_status ?? null,
+    created_by_email: event.created_by_email ?? null,
+    attendee_emails: event.attendee_emails ?? [],
+    synced_at: event.synced_at ?? null,
+  }));
+
+  return { profile, captureInbox, metrics, cycleTemplates, syncedEvents };
 }
 
 export function usePostgresSync({ initialState, token }) {

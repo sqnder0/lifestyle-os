@@ -355,6 +355,14 @@ If onboarding appears repeatedly, verify the `profiles` row is being updated in 
 - Preserve pure utility behavior in cycleEngine.
 - Keep date handling local-time based and deterministic.
 - Add tests for week transitions and override precedence.
+- Keep any mapping between cycle weeks and calendar days in a separate pure function so it can be unit tested in isolation.
+- Specifically test Monday-based boundaries so a "Monday Week A" event cannot spill into "Monday Week B".
+
+### When editing calendar sync
+
+- Prefer explicit fetches on Dashboard mount and on a user-initiated Sync action.
+- Treat webhook or push-notification refresh as optional infrastructure, not the primary local-first sync path.
+- Never persist Google events for other people in a shared calendar; only store events where the signed-in user is the creator or an attendee.
 
 ### When editing backend or auth
 

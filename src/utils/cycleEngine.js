@@ -115,6 +115,55 @@ export const getWeeksAround = (centerDate, cycleStartDate, before = 1, after = 1
   return weeks;
 };
 
+/** Parse a minimal RRULE string into key/value pairs. */
+export const parseRRule = (rule) => {
+  if (!rule || typeof rule !== 'string') return {};
+  return rule
+    .replace(/^RRULE:/i, '')
+    .split(';')
+    .map((part) => part.split('='))
+    .filter(([key, value]) => key && value)
+    .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+};
+
+/**
+ * mapEventToCycle(eventRecurrenceRule, eventStartDate, cycleStartDate)
+ *
+ * Returns:
+ *   {
+ *     recurrence: 'weekly' | 'biweekly' | 'three-weekly',
+ *     slots: [{ week: 'A' | 'B' | 'C', day: 'Mon' ... 'Sun' }]
+ *   }
+ * Or null if rule is unsupported (MONTHLY, YEARLY, non-WEEKLY, or > 3 week interval).
+ */
+export const mapEventToCycle = (eventRecurrenceRule, eventStartDate, cycleStartDate) => {
+  const parsed = parseRRule(eventRecurrenceRule);
+  const freq = parsed.FREQ;
+  const interval = Number.parseInt(parsed.INTERVAL || '1', 10);
+
+  if (!freq || Number.isNaN(interval) || interval < 1) return null;
+  if (freq === 'MONTHLY' || freq === 'YEARLY') return null;
+  if (freq !== 'WEEKLY' || interval > 3) return null;
+
+  const eventDate = toLocalDay(eventStartDate);
+  const cycleOrigin = toLocalDay(cycleStartDate);
+  const day = dayLabel(eventDate);
+
+  if (interval === 1) {
+    return {
+      recurrence: 'weekly',
+      slots: CYCLE_LETTERS.map((week) => ({ week, day })),
+    };
+  }
+
+  const week = getCycleLetter(eventDate, cycleOrigin);
+
+  return {
+    recurrence: interval === 2 ? 'biweekly' : 'three-weekly',
+    slots: [{ week, day }],
+  };
+};
+
 // ─── 3. Block resolver ─────────────────────────────────────────────────────
 
 /**
@@ -326,6 +375,7 @@ export const BLOCK_COLORS = {
   admin:  { bg: 'bg-amber-100',  text: 'text-amber-800',  border: 'border-amber-300',  dot: 'bg-amber-500'  },
   social: { bg: 'bg-sky-100',    text: 'text-sky-800',    border: 'border-sky-300',    dot: 'bg-sky-500'    },
   health: { bg: 'bg-rose-100',   text: 'text-rose-800',   border: 'border-rose-300',   dot: 'bg-rose-500'   },
+  external:{ bg: 'bg-zinc-100',  text: 'text-zinc-800',   border: 'border-zinc-300',   dot: 'bg-zinc-500'   },
   default:{ bg: 'bg-zinc-100',   text: 'text-zinc-700',   border: 'border-zinc-300',   dot: 'bg-zinc-400'   },
 };
 

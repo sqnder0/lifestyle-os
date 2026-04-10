@@ -23,4 +23,9 @@ export const api = {
   get: (path, token) => request(path, { method: 'GET', token }),
   post: (path, body, token) => request(path, { method: 'POST', body, token }),
   put: (path, body, token) => request(path, { method: 'PUT', body, token }),
+  googleStatus: (token) => request('/google/status', { method: 'GET', token }),
+  googleCalendars: (token) => request('/google/calendars', { method: 'GET', token }),
+  googleSync: (token, body = {}) => request('/google/sync', { method: 'POST', token, body }),
+  googleConnect: (token, body) => request('/google/connect', { method: 'POST', token, body }),
+  googleDisconnect: (token) => request('/google/disconnect', { method: 'POST', token }),
 };

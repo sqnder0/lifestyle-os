@@ -19,7 +19,11 @@ import {
   removeDateBlock,
   setDayNote,
   resolvePhysicalBriefing,
+  resolveDay,
+  mapEventToCycle,
+  parseKey,
 } from '../utils/cycleEngine';
+import { api } from '../lib/api';
 
 const OSContext = createContext(null);
 
@@ -31,6 +35,22 @@ export function OSProvider({ children, auth }) {
 
   const update = useCallback((fn) => setState((prev) => fn(prev)), [setState]);
   const resetToSeed = () => setState(SEED_STATE);
+
+  const eventToDisplayBlock = (event) => {
+    const start = new Date(event.start_time);
+    const end = new Date(event.end_time);
+    const duration = Math.max(15, Math.round((end - start) / 60000));
+    return {
+      id: `google-${event.google_event_id}`,
+      label: event.summary || '(No title)',
+      hour: start.getHours(),
+      minute: start.getMinutes(),
+      duration,
+      type: 'external',
+      source: 'google',
+      readOnly: true,
+    };
+  };
 
   const addCapture = (text) => {
     const value = text?.trim();
@@ -258,18 +278,172 @@ export function OSProvider({ children, auth }) {
   const toggleSidebar = () =>
     update((s) => ({ ...s, ui: { ...(s.ui ?? {}), sidebarOpen: !s.ui?.sidebarOpen } }));
 
+  const syncGoogleCalendar = async ({ force = false } = {}) => {
+    if (!auth?.token) throw new Error('You must be signed in to sync.');
+    const response = await api.googleSync(auth.token, { force });
+    update((s) => ({
+      ...s,
+      syncedEvents: response.events ?? s.syncedEvents ?? [],
+      settings: {
+        ...(s.settings ?? {}),
+        googleCalendar: {
+          ...(s.settings?.googleCalendar ?? {}),
+          connected: true,
+          lastSyncedAt: response.lastSyncedAt ?? new Date().toISOString(),
+        },
+      },
+      ui: {
+        ...(s.ui ?? {}),
+        pendingGoogleRecurringImports: response.recurringCandidates ?? [],
+      },
+    }));
+    return response;
+  };
+
+  const saveGoogleCalendarSelection = async (selectedCalendarIds) => {
+    update((s) => ({
+      ...s,
+      settings: {
+        ...(s.settings ?? {}),
+        googleCalendar: {
+          ...(s.settings?.googleCalendar ?? {}),
+          selectedCalendarIds,
+        },
+      },
+    }));
+  };
+
+  const connectGoogleCalendar = async ({ accessToken, refreshToken, email, expiresAt }) => {
+    if (!auth?.token) throw new Error('You must be signed in to connect Google.');
+    await api.googleConnect(auth.token, { accessToken, refreshToken, email, expiresAt });
+    update((s) => ({
+      ...s,
+      settings: {
+        ...(s.settings ?? {}),
+        googleCalendar: {
+          ...(s.settings?.googleCalendar ?? {}),
+          connected: true,
+          email,
+        },
+      },
+    }));
+  };
+
+  const disconnectGoogleCalendar = async () => {
+    if (!auth?.token) throw new Error('You must be signed in to disconnect Google.');
+    await api.googleDisconnect(auth.token);
+    update((s) => ({
+      ...s,
+      syncedEvents: [],
+      settings: {
+        ...(s.settings ?? {}),
+        googleCalendar: {
+          ...(s.settings?.googleCalendar ?? {}),
+          connected: false,
+          email: '',
+          selectedCalendarIds: [],
+          lastSyncedAt: null,
+        },
+      },
+      ui: {
+        ...(s.ui ?? {}),
+        pendingGoogleRecurringImports: [],
+      },
+    }));
+  };
+
+  const fetchGoogleCalendars = async () => {
+    if (!auth?.token) throw new Error('You must be signed in to fetch calendars.');
+    const payload = await api.googleCalendars(auth.token);
+    return payload.calendars ?? [];
+  };
+
+  const applyGoogleRecurringImports = () => {
+    const imports = state.ui?.pendingGoogleRecurringImports ?? [];
+    if (!imports.length) return 0;
+
+    let applied = 0;
+    update((s) => {
+      const nextCycles = { ...(s.cycles ?? {}) };
+      for (const candidate of imports) {
+        if (!candidate.raw_rrule || !candidate.start_time) continue;
+        const mapped = mapEventToCycle(candidate.raw_rrule, candidate.start_time, s.cycleStartDate);
+        if (!mapped) continue;
+
+        for (const slot of mapped.slots) {
+          const week = slot.week;
+          const start = new Date(candidate.start_time);
+          const end = new Date(candidate.end_time);
+          const duration = Math.max(15, Math.round((end - start) / 60000));
+          const exists = (nextCycles?.[week]?.blocks ?? []).some(
+            (b) => b.day === slot.day && b.label === candidate.summary && b.hour === start.getHours() && (b.minute ?? 0) === start.getMinutes(),
+          );
+          if (exists) continue;
+          applied += 1;
+          nextCycles[week] = {
+            ...(nextCycles[week] ?? { letter: week, label: `Week ${week}`, blocks: [] }),
+            blocks: [
+              ...(nextCycles[week]?.blocks ?? []),
+              {
+                id: uid(),
+                day: slot.day,
+                label: candidate.summary,
+                hour: start.getHours(),
+                minute: start.getMinutes(),
+                duration,
+                type: 'external',
+              },
+            ],
+          };
+        }
+      }
+
+      return {
+        ...s,
+        cycles: nextCycles,
+        ui: {
+          ...(s.ui ?? {}),
+          pendingGoogleRecurringImports: [],
+        },
+      };
+    });
+    return applied;
+  };
+
   const selectors = {
     inbox: () => (state.capture ?? []).filter((c) => !c.processed),
     todayMetric: () => state.metrics?.[todayKey()] ?? makeMetricLog(),
-    dailyBriefing: (date = todayKey()) =>
-      resolvePhysicalBriefing(
+    dailyBriefing: (date = todayKey()) => {
+      const briefing = resolvePhysicalBriefing(
         date,
         state.cycleStartDate,
         state.cyclePlans ?? {},
         state.reference ?? {},
         state.metrics?.[date]?.energy ?? null,
         state.settings?.energyLowThreshold ?? 4,
-      ),
+      );
+
+      const localEvents = resolveDay(date, state.cycles ?? {}, state.overrides ?? {}, parseKey(state.cycleStartDate))
+        .map((event) => ({ ...event, source: event.source || 'template' }));
+
+      const externalEvents = (state.syncedEvents ?? [])
+        .filter((event) => {
+          const start = new Date(event.start_time);
+          const yyyy = String(start.getFullYear());
+          const mm = String(start.getMonth() + 1).padStart(2, '0');
+          const dd = String(start.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}` === date;
+        })
+        .map(eventToDisplayBlock);
+
+      const mergedEvents = [...localEvents, ...externalEvents].sort((a, b) => {
+        const aMin = a.hour * 60 + (a.minute ?? 0);
+        const bMin = b.hour * 60 + (b.minute ?? 0);
+        return aMin - bMin;
+      });
+
+      return { ...briefing, mergedEvents };
+    },
   };
 
   const value = {
@@ -313,6 +487,12 @@ export function OSProvider({ children, auth }) {
     currentWeekKey,
     setActiveModule,
     toggleSidebar,
+    syncGoogleCalendar,
+    saveGoogleCalendarSelection,
+    applyGoogleRecurringImports,
+    connectGoogleCalendar,
+    disconnectGoogleCalendar,
+    fetchGoogleCalendars,
     selectors,
   };
 

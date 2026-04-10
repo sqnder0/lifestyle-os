@@ -7,6 +7,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getClient, query } from './db.js';
 import { authMiddleware, signToken } from './auth.js';
+import {
+  listCalendars,
+  listEvents,
+  shouldPersistEvent,
+  parseRecurringCadence,
+} from './googleCalendarService.js';
 
 dotenv.config();
 
@@ -137,11 +143,22 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 
 app.get('/api/state', authMiddleware, async (req, res) => {
   try {
-    const [profile, capture, metrics, cycleTemplates] = await Promise.all([
-      query('select username, settings, onboarded from profiles where id = $1', [req.userId]),
+    const [profile, capture, metrics, cycleTemplates, syncedEvents] = await Promise.all([
+      query(
+        `select username, settings, onboarded, google_email, google_access_token, google_refresh_token, google_token_expires_at, google_last_synced_at
+         from profiles where id = $1`,
+        [req.userId],
+      ),
       query('select id, content, created_at, status from capture_inbox where user_id = $1 order by created_at desc', [req.userId]),
       query('select id, date, energy, sleep, mood from metrics where user_id = $1 order by date asc', [req.userId]),
       query('select id, week_type, day_of_week, workout_id, meal_protocol_id from cycle_templates where user_id = $1', [req.userId]),
+      query(
+        `select google_event_id, calendar_id, start_time, end_time, summary, raw_rrule, source_status, created_by_email, attendee_emails, synced_at
+         from synced_events
+         where user_id = $1
+         order by start_time asc`,
+        [req.userId],
+      ),
     ]);
 
     return res.json({
@@ -149,6 +166,7 @@ app.get('/api/state', authMiddleware, async (req, res) => {
       captureInbox: capture.rows,
       metrics: metrics.rows,
       cycleTemplates: cycleTemplates.rows,
+      syncedEvents: syncedEvents.rows,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -162,6 +180,7 @@ app.put('/api/state', authMiddleware, async (req, res) => {
     captureInbox = [],
     metrics = [],
     cycleTemplates = [],
+    syncedEvents = [],
   } = payload;
 
   const client = await getClient();
@@ -205,6 +224,38 @@ app.put('/api/state', authMiddleware, async (req, res) => {
       );
     }
 
+    await client.query('delete from synced_events where user_id = $1', [req.userId]);
+    for (const event of syncedEvents) {
+      await client.query(
+        `insert into synced_events (
+          user_id,
+          google_event_id,
+          calendar_id,
+          start_time,
+          end_time,
+          summary,
+          raw_rrule,
+          source_status,
+          created_by_email,
+          attendee_emails,
+          synced_at
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, coalesce($11::timestamptz, now()))`,
+        [
+          req.userId,
+          event.google_event_id,
+          event.calendar_id ?? null,
+          event.start_time,
+          event.end_time,
+          event.summary ?? '',
+          event.raw_rrule ?? null,
+          event.source_status ?? null,
+          event.created_by_email ?? null,
+          JSON.stringify(event.attendee_emails ?? []),
+          event.synced_at ?? null,
+        ],
+      );
+    }
+
     await client.query('commit');
     return res.json({ ok: true });
   } catch (error) {
@@ -216,6 +267,247 @@ app.put('/api/state', authMiddleware, async (req, res) => {
     return res.status(500).json({ error: error.message });
   } finally {
     client.release();
+  }
+});
+
+app.get('/api/google/status', authMiddleware, async (req, res) => {
+  try {
+    const profile = await query(
+      `select google_email, google_access_token, google_refresh_token, google_last_synced_at, settings
+       from profiles where id = $1`,
+      [req.userId],
+    );
+    const row = profile.rows[0];
+    const integration = row?.settings?.googleCalendar ?? {};
+    return res.json({
+      connected: Boolean(row?.google_access_token && row?.google_refresh_token),
+      email: row?.google_email ?? null,
+      lastSyncedAt: row?.google_last_synced_at ?? null,
+      selectedCalendarIds: integration.selectedCalendarIds ?? [],
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/google/connect', authMiddleware, async (req, res) => {
+  const {
+    accessToken,
+    refreshToken,
+    email,
+    expiresAt,
+  } = req.body || {};
+
+  if (!accessToken || !refreshToken || !email) {
+    return res.status(400).json({ error: 'accessToken, refreshToken, and email are required.' });
+  }
+
+  try {
+    await query(
+      `update profiles
+       set google_access_token = $2,
+           google_refresh_token = $3,
+           google_email = lower($4),
+           google_token_expires_at = $5
+       where id = $1`,
+      [req.userId, accessToken, refreshToken, email, expiresAt ?? null],
+    );
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/google/disconnect', authMiddleware, async (req, res) => {
+  try {
+    await query(
+      `update profiles
+       set google_access_token = null,
+           google_refresh_token = null,
+           google_email = null,
+           google_token_expires_at = null,
+           google_last_synced_at = null
+       where id = $1`,
+      [req.userId],
+    );
+    await query('delete from synced_events where user_id = $1', [req.userId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/google/calendars', authMiddleware, async (req, res) => {
+  try {
+    const profileRes = await query(
+      'select google_access_token, google_refresh_token, google_email, google_token_expires_at from profiles where id = $1',
+      [req.userId],
+    );
+    const profile = profileRes.rows[0];
+
+    if (!profile?.google_access_token || !profile?.google_refresh_token || !profile?.google_email) {
+      return res.status(400).json({ error: 'Google Calendar is not connected.' });
+    }
+
+    const calendars = await listCalendars(profile, async ({ accessToken, expiresAt }) => {
+      await query(
+        `update profiles
+         set google_access_token = $2,
+             google_token_expires_at = $3
+         where id = $1`,
+        [req.userId, accessToken, expiresAt],
+      );
+    });
+
+    return res.json({ calendars });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/google/sync', authMiddleware, async (req, res) => {
+  const { force = false } = req.body || {};
+
+  try {
+    const profileRes = await query(
+      'select google_access_token, google_refresh_token, google_email, google_token_expires_at, google_last_synced_at, settings from profiles where id = $1',
+      [req.userId],
+    );
+    const profile = profileRes.rows[0];
+
+    if (!profile?.google_access_token || !profile?.google_refresh_token || !profile?.google_email) {
+      return res.status(400).json({ error: 'Google Calendar is not connected.' });
+    }
+
+    const selectedCalendarIds = profile.settings?.googleCalendar?.selectedCalendarIds;
+    const calendarIds = Array.isArray(selectedCalendarIds) && selectedCalendarIds.length
+      ? selectedCalendarIds
+      : ['primary'];
+
+    const now = Date.now();
+    const lastSyncedMs = profile.google_last_synced_at ? new Date(profile.google_last_synced_at).getTime() : 0;
+    if (!force && lastSyncedMs && now - lastSyncedMs < 5 * 60 * 1000) {
+      const existing = await query(
+        `select google_event_id, calendar_id, start_time, end_time, summary, raw_rrule, source_status, created_by_email, attendee_emails, synced_at
+         from synced_events where user_id = $1 order by start_time asc`,
+        [req.userId],
+      );
+      return res.json({ events: existing.rows, throttled: true, lastSyncedAt: profile.google_last_synced_at });
+    }
+
+    const windowStart = new Date();
+    windowStart.setDate(windowStart.getDate() - 7);
+    const windowEnd = new Date();
+    windowEnd.setDate(windowEnd.getDate() + 35);
+
+    const allEvents = [];
+    for (const calendarId of calendarIds) {
+      const events = await listEvents(
+        profile,
+        {
+          calendarId,
+          timeMin: windowStart.toISOString(),
+          timeMax: windowEnd.toISOString(),
+        },
+        async ({ accessToken, expiresAt }) => {
+          await query(
+            `update profiles
+             set google_access_token = $2,
+                 google_token_expires_at = $3
+             where id = $1`,
+            [req.userId, accessToken, expiresAt],
+          );
+        },
+      );
+      for (const event of events) {
+        allEvents.push(event);
+      }
+    }
+
+    const userEmail = profile.google_email.toLowerCase();
+    const filtered = allEvents.filter((event) => shouldPersistEvent(event, userEmail));
+
+    const client = await getClient();
+    try {
+      await client.query('begin');
+      await client.query('delete from synced_events where user_id = $1', [req.userId]);
+
+      for (const event of filtered) {
+        if (!event.startTime || !event.endTime) continue;
+
+        await client.query(
+          `insert into synced_events (
+             user_id,
+             google_event_id,
+             calendar_id,
+             start_time,
+             end_time,
+             summary,
+             raw_rrule,
+             source_status,
+             created_by_email,
+             attendee_emails,
+             synced_at
+           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,now())
+           on conflict (user_id, google_event_id)
+           do update set
+             calendar_id = excluded.calendar_id,
+             start_time = excluded.start_time,
+             end_time = excluded.end_time,
+             summary = excluded.summary,
+             raw_rrule = excluded.raw_rrule,
+             source_status = excluded.source_status,
+             created_by_email = excluded.created_by_email,
+             attendee_emails = excluded.attendee_emails,
+             synced_at = now()`,
+          [
+            req.userId,
+            event.id,
+            event.calendarId,
+            event.startTime,
+            event.endTime,
+            event.summary,
+            event.rawRRule,
+            event.status,
+            event.creatorEmail,
+            JSON.stringify(event.attendees.map((a) => a.email).filter(Boolean)),
+          ],
+        );
+      }
+
+      await client.query(
+        'update profiles set google_last_synced_at = now() where id = $1',
+        [req.userId],
+      );
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const rows = await query(
+      `select google_event_id, calendar_id, start_time, end_time, summary, raw_rrule, source_status, created_by_email, attendee_emails, synced_at
+       from synced_events where user_id = $1 order by start_time asc`,
+      [req.userId],
+    );
+
+    const recurringCandidates = rows.rows
+      .filter((event) => parseRecurringCadence(event.raw_rrule).allowed)
+      .map((event) => ({
+        ...event,
+        cadence: parseRecurringCadence(event.raw_rrule),
+      }));
+
+    return res.json({
+      events: rows.rows,
+      recurringCandidates,
+      lastSyncedAt: new Date().toISOString(),
+      throttled: false,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 });
 

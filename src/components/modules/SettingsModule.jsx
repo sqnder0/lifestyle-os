@@ -68,7 +68,17 @@ function SettingSection({ title, children }) {
 
 // ── SettingsModule ─────────────────────────────────────────────────────────
 export default function SettingsModule() {
-  const { state, update, signOut } = useOS();
+  const {
+    state,
+    update,
+    signOut,
+    syncGoogleCalendar,
+    connectGoogleCalendar,
+    disconnectGoogleCalendar,
+    fetchGoogleCalendars,
+    saveGoogleCalendarSelection,
+    applyGoogleRecurringImports,
+  } = useOS();
   const { dark, toggle: toggleDark } = useDarkMode();
 
   // Settings live at state.settings
@@ -89,6 +99,87 @@ export default function SettingsModule() {
     const perm = await Notification.requestPermission();
     setNotifPerm(perm);
   };
+
+  const [googleEmail, setGoogleEmail] = useState(settings.googleCalendar?.email ?? '');
+  const [googleAccessToken, setGoogleAccessToken] = useState('');
+  const [googleRefreshToken, setGoogleRefreshToken] = useState('');
+  const [googleCalendars, setGoogleCalendars] = useState([]);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  const loadCalendars = async () => {
+    setGoogleLoading(true);
+    setGoogleError('');
+    try {
+      const rows = await fetchGoogleCalendars();
+      setGoogleCalendars(rows);
+    } catch (error) {
+      setGoogleError(error.message || 'Unable to load calendars');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!settings.googleCalendar?.connected) return;
+    loadCalendars();
+  }, [settings.googleCalendar?.connected]);
+
+  const onConnectGoogle = async () => {
+    setGoogleLoading(true);
+    setGoogleError('');
+    try {
+      await connectGoogleCalendar({
+        accessToken: googleAccessToken.trim(),
+        refreshToken: googleRefreshToken.trim(),
+        email: googleEmail.trim(),
+      });
+      await loadCalendars();
+      setGoogleAccessToken('');
+      setGoogleRefreshToken('');
+    } catch (error) {
+      setGoogleError(error.message || 'Unable to connect Google Calendar');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const onDisconnectGoogle = async () => {
+    setGoogleLoading(true);
+    setGoogleError('');
+    try {
+      await disconnectGoogleCalendar();
+      setGoogleCalendars([]);
+    } catch (error) {
+      setGoogleError(error.message || 'Unable to disconnect Google Calendar');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const onToggleCalendar = (calendarId, checked) => {
+    const current = settings.googleCalendar?.selectedCalendarIds ?? [];
+    const next = checked ? [...new Set([...current, calendarId])] : current.filter((id) => id !== calendarId);
+    saveGoogleCalendarSelection(next);
+  };
+
+  const onSyncNow = async () => {
+    setGoogleLoading(true);
+    setGoogleError('');
+    try {
+      const result = await syncGoogleCalendar({ force: true });
+      if ((result?.recurringCandidates ?? []).length > 0) {
+        setShowImportModal(true);
+      }
+    } catch (error) {
+      setGoogleError(error.message || 'Google sync failed');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const recurringCandidates = state.ui?.pendingGoogleRecurringImports ?? [];
 
   return (
     <div className="h-full overflow-y-auto">
@@ -111,6 +202,93 @@ export default function SettingsModule() {
               className="input-base w-36 text-sm"
             />
           </SettingRow>
+        </SettingSection>
+
+        {/* ── Google Calendar ── */}
+        <SettingSection title="Google Calendar">
+          {!settings.googleCalendar?.connected ? (
+            <div className="py-3 space-y-2.5">
+              <p className="text-xs text-[var(--text-secondary)]">
+                Connect a Google account token pair from your Supabase Google auth session.
+              </p>
+              <input
+                type="email"
+                value={googleEmail}
+                onChange={(e) => setGoogleEmail(e.target.value)}
+                placeholder="Google account email"
+                className="input-base w-full text-sm"
+              />
+              <input
+                type="password"
+                value={googleAccessToken}
+                onChange={(e) => setGoogleAccessToken(e.target.value)}
+                placeholder="Google access token"
+                className="input-base w-full text-sm"
+              />
+              <input
+                type="password"
+                value={googleRefreshToken}
+                onChange={(e) => setGoogleRefreshToken(e.target.value)}
+                placeholder="Google refresh token"
+                className="input-base w-full text-sm"
+              />
+              <button
+                onClick={onConnectGoogle}
+                disabled={googleLoading || !googleEmail.trim() || !googleAccessToken.trim() || !googleRefreshToken.trim()}
+                className="text-xs px-4 py-2 rounded-xl bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] hover:opacity-90 disabled:opacity-60"
+              >
+                {googleLoading ? 'Connecting...' : 'Connect Google Calendar'}
+              </button>
+            </div>
+          ) : (
+            <>
+              <SettingRow
+                label="Connected account"
+                sub={settings.googleCalendar?.lastSyncedAt ? `Last synced ${new Date(settings.googleCalendar.lastSyncedAt).toLocaleString()}` : 'Not synced yet'}
+              >
+                <span className="text-xs text-[var(--text-muted)]">{settings.googleCalendar?.email || 'Connected'}</span>
+              </SettingRow>
+              <div className="py-3 space-y-2.5">
+                <p className="text-xs text-[var(--text-secondary)]">Calendars to include</p>
+                {googleCalendars.length === 0 ? (
+                  <p className="text-[11px] text-[var(--text-muted)]">No calendars loaded.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {googleCalendars.map((calendar) => {
+                      const selected = (settings.googleCalendar?.selectedCalendarIds ?? []).includes(calendar.id);
+                      return (
+                        <label key={calendar.id} className="flex items-center justify-between gap-3 text-xs text-[var(--text-primary)]">
+                          <span className="truncate">{calendar.summary}</span>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => onToggleCalendar(calendar.id, e.target.checked)}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    onClick={onSyncNow}
+                    disabled={googleLoading}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-inset)] disabled:opacity-60"
+                  >
+                    {googleLoading ? 'Syncing...' : 'Force Sync'}
+                  </button>
+                  <button
+                    onClick={onDisconnectGoogle}
+                    disabled={googleLoading}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-red-100 text-red-500 hover:bg-[var(--fill-red)] disabled:opacity-60"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          {googleError ? <p className="text-[11px] text-red-500 pb-2">{googleError}</p> : null}
         </SettingSection>
 
         {/* ── Schedule ── */}
@@ -269,6 +447,44 @@ export default function SettingsModule() {
         </SettingSection>
 
       </div>
+
+      {showImportModal ? (
+        <div className="fixed inset-0 bg-black/30 z-40 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-[var(--surface-raised)] border border-[var(--border)] rounded-2xl p-5 space-y-3">
+            <p className="text-sm font-semibold text-[var(--text-primary)]">Review & Import Recurring Events</p>
+            <p className="text-xs text-[var(--text-muted)]">Confirm before writing recurring Google commitments into Week A/B/C templates.</p>
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {recurringCandidates.map((event) => {
+                const cadence = event.cadence?.interval === 1 ? 'every week' : `every ${event.cadence?.interval || '?'} weeks`;
+                return (
+                  <div key={event.google_event_id} className="rounded-xl border border-[var(--border)] px-3 py-2">
+                    <p className="text-sm text-[var(--text-primary)]">{event.summary}</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">{cadence} · starts {new Date(event.start_time).toLocaleString()}</p>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-[var(--text-secondary)]">We found recurring events. Add detected cadence slots into your templates?</p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  applyGoogleRecurringImports();
+                  setShowImportModal(false);
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)]"
+              >
+                Confirm Import
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

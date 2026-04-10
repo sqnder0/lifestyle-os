@@ -1,4 +1,5 @@
 import { formatTime, formatDuration, blockColors } from '../../utils/cycleEngine';
+import { Calendar } from 'lucide-react';
 
 /**
  * EventBlock
@@ -15,6 +16,15 @@ export default function EventBlock({ event, variant = 'week', onEdit, onDelete }
     ? <span className="ml-1 text-[10px] opacity-60 italic">
         {event.source === 'added' ? '+ added' : '~ modified'}
       </span>
+    : null;
+
+  const externalIndicator = event.source === 'google'
+    ? (
+      <span className="inline-flex items-center gap-1 text-[10px] opacity-70" title="Read-only Google Calendar event">
+        <Calendar size={11} />
+        Read only
+      </span>
+    )
     : null;
 
   if (variant === 'today') {
@@ -39,6 +49,7 @@ export default function EventBlock({ event, variant = 'week', onEdit, onDelete }
             {sourceIndicator}
           </p>
           <p className="text-[11px] opacity-60 mt-0.5 capitalize">{event.type}</p>
+          {externalIndicator}
         </div>
 
         {/* Actions (shown on hover) */}
@@ -79,6 +90,7 @@ export default function EventBlock({ event, variant = 'week', onEdit, onDelete }
         <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.dot}`} />
         <span className="font-medium truncate">{event.label}</span>
         {sourceIndicator}
+        {event.source === 'google' ? <Calendar size={11} className="opacity-60" /> : null}
       </div>
       <span className="opacity-60 ml-3">{timeStr}</span>
     </div>

@@ -7,14 +7,20 @@
     "dev": "vite",
     "dev:full": "npm run api & npm run dev",
     "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "start": "NODE_ENV=production node server/index.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.8",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
+    "google-auth-library": "^10.1.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.400.0",
     "pg": "^8.20.0",
@@ -26,7 +32,8 @@
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
-    "vite": "^5.3.1"
+    "vite": "^5.3.1",
+    "vitest": "^2.1.9"
   },
   "type": "module"
 }

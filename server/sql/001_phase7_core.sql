@@ -13,6 +13,11 @@ create table if not exists profiles (
   id uuid primary key references auth_users(id) on delete cascade,
   username text,
   settings jsonb not null default '{}'::jsonb,
+  google_email text,
+  google_access_token text,
+  google_refresh_token text,
+  google_token_expires_at timestamptz,
+  google_last_synced_at timestamptz,
   onboarded boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -64,6 +69,25 @@ create table if not exists cycle_templates (
 );
 create index if not exists cycle_templates_user_week_idx on cycle_templates(user_id, week_type);
 
+create table if not exists synced_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth_users(id) on delete cascade,
+  google_event_id text not null,
+  calendar_id text,
+  start_time timestamptz not null,
+  end_time timestamptz not null,
+  summary text not null default '',
+  raw_rrule text,
+  source_status text,
+  created_by_email text,
+  attendee_emails jsonb not null default '[]'::jsonb,
+  synced_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(user_id, google_event_id)
+);
+create index if not exists synced_events_user_start_idx on synced_events(user_id, start_time asc);
+
 create or replace function set_updated_at()
 returns trigger as $$
 begin
@@ -86,4 +110,8 @@ for each row execute procedure set_updated_at();
 
 drop trigger if exists cycle_templates_set_updated_at on cycle_templates;
 create trigger cycle_templates_set_updated_at before update on cycle_templates
+for each row execute procedure set_updated_at();
+
+drop trigger if exists synced_events_set_updated_at on synced_events;
+create trigger synced_events_set_updated_at before update on synced_events
 for each row execute procedure set_updated_at();

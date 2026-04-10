@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Calendar } from 'lucide-react';
 import { useOS } from '../../context/OSContext';
 import QuickCapture from './QuickCapture';
 import { todayKey } from '../../utils/schema';
@@ -159,6 +160,78 @@ function QuickLogs() {
   );
 }
 
+function DailyEvents() {
+  const { selectors, syncGoogleCalendar, state } = useOS();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const briefing = selectors.dailyBriefing(todayKey());
+  const events = briefing.mergedEvents ?? [];
+
+  const syncNow = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await syncGoogleCalendar({ force: true });
+    } catch (err) {
+      setError(err.message || 'Sync failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const lastSynced = state.settings?.googleCalendar?.lastSyncedAt;
+    const lastSyncedMs = lastSynced ? new Date(lastSynced).getTime() : 0;
+    if (lastSyncedMs && Date.now() - lastSyncedMs < 5 * 60 * 1000) return;
+
+    setLoading(true);
+    setError('');
+    syncGoogleCalendar({ force: false })
+      .catch((err) => {
+        setError(err.message || 'Sync failed');
+      })
+      .finally(() => setLoading(false));
+  }, [state.settings?.googleCalendar?.lastSyncedAt]);
+
+  return (
+    <section className="card px-5 py-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">Today Schedule</p>
+        <button
+          onClick={syncNow}
+          disabled={loading}
+          className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-inset)] disabled:opacity-60"
+        >
+          {loading ? 'Syncing...' : 'Sync Now'}
+        </button>
+      </div>
+      {error ? <p className="text-[11px] text-red-500">{error}</p> : null}
+      {!events.length ? (
+        <p className="text-xs text-[var(--text-muted)]">No events for today.</p>
+      ) : (
+        <div className="space-y-2">
+          {events.map((event) => (
+            <div key={event.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-inset)] px-3 py-2.5 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-[var(--text-primary)] truncate">{event.label}</p>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  {String(event.hour).padStart(2, '0')}:{String(event.minute ?? 0).padStart(2, '0')} · {event.duration}m
+                </p>
+              </div>
+              {event.source === 'google' ? (
+                <span className="inline-flex items-center gap-1 text-[10px] text-[var(--text-muted)]" title="Read-only Google Calendar event">
+                  <Calendar size={12} />
+                  Read only
+                </span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DailyPrinciples() {
   const { state, setActiveModule } = useOS();
   const principles = state.principles ?? {};
@@ -219,6 +292,7 @@ export default function DashboardModule() {
         <HeaderBlock />
         <EmptyHealthState />
         <VitalityBriefing />
+        <DailyEvents />
         <QuickLogs />
         <DailyPrinciples />
       </div>

@@ -173,8 +173,15 @@ export const SEED_STATE = {
     firstDayOfWeek: 'Monday',
     timeFormat: '12h',
     dateFormat: 'DD/MM/YYYY',
+    googleCalendar: {
+      connected: false,
+      email: '',
+      selectedCalendarIds: [],
+      lastSyncedAt: null,
+    },
     onboarded: false,
   },
+  syncedEvents: [],
 };
 
 export const LOW_ENERGY_PROTOCOL = [
