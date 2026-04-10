@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { DEFAULT_REFERENCE, uid } from '../utils/schema';
 
 const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -31,7 +31,7 @@ function mapFromServer(seedState, payload) {
       ...next.settings,
       ...profileSettings,
       googleCalendar,
-      name: profile.username ?? (profile.settings?.name ?? next.settings.name),
+      name: profile.first_name ?? profile.username ?? (profile.settings?.name ?? next.settings.name),
       onboarded: Boolean(profile.onboarded),
     };
     next.reference = reference ?? next.reference ?? DEFAULT_REFERENCE;
@@ -159,15 +159,15 @@ function toServerPayload(state) {
   return { profile, captureInbox, metrics, cycleTemplates, syncedEvents };
 }
 
-export function usePostgresSync({ initialState, token }) {
+export function usePostgresSync({ initialState, userId }) {
   const [state, setState] = useState(initialState);
-  const [loading, setLoading] = useState(Boolean(token));
+  const [loading, setLoading] = useState(Boolean(userId));
   const [syncError, setSyncError] = useState(null);
   const [dirty, setDirty] = useState(false);
   const initializedRef = useRef(false);
 
   useEffect(() => {
-    if (!token) {
+    if (!userId) {
       setState(initialState);
       setLoading(false);
       setSyncError(null);
@@ -178,26 +178,52 @@ export function usePostgresSync({ initialState, token }) {
     let cancelled = false;
     setLoading(true);
 
-    api.get('/state', token)
-      .then((payload) => {
+    (async () => {
+      try {
+        const [
+          profileRes,
+          captureRes,
+          metricsRes,
+          cycleRes,
+          syncedRes,
+        ] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+          supabase.from('capture_inbox').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+          supabase.from('metrics').select('*').eq('user_id', userId).order('date', { ascending: true }),
+          supabase.from('cycle_templates').select('*').eq('user_id', userId),
+          supabase.from('synced_events').select('*').eq('user_id', userId).order('start_time', { ascending: true }),
+        ]);
+
         if (cancelled) return;
+
+        if (profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error) {
+          throw profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error;
+        }
+
+        const payload = {
+          profile: profileRes.data,
+          captureInbox: captureRes.data ?? [],
+          metrics: metricsRes.data ?? [],
+          cycleTemplates: cycleRes.data ?? [],
+          syncedEvents: syncedRes.data ?? [],
+        };
+
         setState(mapFromServer(initialState, payload));
         initializedRef.current = true;
         setDirty(false);
         setSyncError(null);
-      })
-      .catch((error) => {
+      } catch (error) {
         if (cancelled) return;
-        setSyncError(error.message);
-      })
-      .finally(() => {
+        setSyncError(error.message || 'Failed to load user state');
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [token, initialState]);
+  }, [userId, initialState]);
 
   const setSyncedState = useCallback((updater) => {
     setState((prev) => (typeof updater === 'function' ? updater(prev) : updater));
@@ -207,11 +233,60 @@ export function usePostgresSync({ initialState, token }) {
   }, []);
 
   useEffect(() => {
-    if (!token || !initializedRef.current || !dirty) return;
+    if (!userId || !initializedRef.current || !dirty) return;
 
     const timer = setTimeout(async () => {
       try {
-        await api.put('/state', toServerPayload(state), token);
+        const payload = toServerPayload(state);
+
+        const profilePayload = payload.profile;
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: userId,
+            first_name: profilePayload.username ?? '',
+            username: profilePayload.username ?? '',
+            onboarded: Boolean(profilePayload.onboarded),
+            settings: profilePayload.settings ?? {},
+          }, { onConflict: 'id' });
+        if (profileError) throw profileError;
+
+        const { error: captureDeleteError } = await supabase.from('capture_inbox').delete().eq('user_id', userId);
+        if (captureDeleteError) throw captureDeleteError;
+        if (payload.captureInbox.length) {
+          const { error: captureInsertError } = await supabase.from('capture_inbox').insert(
+            payload.captureInbox.map((item) => ({ ...item, user_id: userId })),
+          );
+          if (captureInsertError) throw captureInsertError;
+        }
+
+        const { error: metricDeleteError } = await supabase.from('metrics').delete().eq('user_id', userId);
+        if (metricDeleteError) throw metricDeleteError;
+        if (payload.metrics.length) {
+          const { error: metricInsertError } = await supabase.from('metrics').insert(
+            payload.metrics.map((item) => ({ ...item, user_id: userId })),
+          );
+          if (metricInsertError) throw metricInsertError;
+        }
+
+        const { error: cycleDeleteError } = await supabase.from('cycle_templates').delete().eq('user_id', userId);
+        if (cycleDeleteError) throw cycleDeleteError;
+        if (payload.cycleTemplates.length) {
+          const { error: cycleInsertError } = await supabase.from('cycle_templates').insert(
+            payload.cycleTemplates.map((item) => ({ ...item, user_id: userId })),
+          );
+          if (cycleInsertError) throw cycleInsertError;
+        }
+
+        const { error: syncedDeleteError } = await supabase.from('synced_events').delete().eq('user_id', userId);
+        if (syncedDeleteError) throw syncedDeleteError;
+        if (payload.syncedEvents.length) {
+          const { error: syncedInsertError } = await supabase.from('synced_events').insert(
+            payload.syncedEvents.map((item) => ({ ...item, user_id: userId })),
+          );
+          if (syncedInsertError) throw syncedInsertError;
+        }
+
         setDirty(false);
         setSyncError(null);
       } catch (error) {
@@ -220,15 +295,39 @@ export function usePostgresSync({ initialState, token }) {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [state, token, dirty]);
+  }, [state, userId, dirty]);
 
   useEffect(() => {
-    if (!token || !initializedRef.current) return undefined;
+    if (!userId || !initializedRef.current) return undefined;
 
     const timer = setInterval(async () => {
       if (dirty) return;
       try {
-        const payload = await api.get('/state', token);
+        const [
+          profileRes,
+          captureRes,
+          metricsRes,
+          cycleRes,
+          syncedRes,
+        ] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+          supabase.from('capture_inbox').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+          supabase.from('metrics').select('*').eq('user_id', userId).order('date', { ascending: true }),
+          supabase.from('cycle_templates').select('*').eq('user_id', userId),
+          supabase.from('synced_events').select('*').eq('user_id', userId).order('start_time', { ascending: true }),
+        ]);
+
+        if (profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error) {
+          throw profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error;
+        }
+
+        const payload = {
+          profile: profileRes.data,
+          captureInbox: captureRes.data ?? [],
+          metrics: metricsRes.data ?? [],
+          cycleTemplates: cycleRes.data ?? [],
+          syncedEvents: syncedRes.data ?? [],
+        };
         setState((prev) => mapFromServer(prev, payload));
       } catch {
         // Best-effort polling; failures are ignored and retried on next tick.
@@ -236,7 +335,7 @@ export function usePostgresSync({ initialState, token }) {
     }, 8000);
 
     return () => clearInterval(timer);
-  }, [token, dirty]);
+  }, [userId, dirty]);
 
   return useMemo(() => ({
     state,

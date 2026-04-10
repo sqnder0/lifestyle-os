@@ -30,7 +30,7 @@ const OSContext = createContext(null);
 export function OSProvider({ children, auth }) {
   const { state, setState, loading: syncLoading, syncError } = usePostgresSync({
     initialState: SEED_STATE,
-    token: auth?.token ?? null,
+    userId: auth?.user?.id ?? null,
   });
 
   const update = useCallback((fn) => setState((prev) => fn(prev)), [setState]);
@@ -279,7 +279,7 @@ export function OSProvider({ children, auth }) {
     update((s) => ({ ...s, ui: { ...(s.ui ?? {}), sidebarOpen: !s.ui?.sidebarOpen } }));
 
   const syncGoogleCalendar = async ({ force = false } = {}) => {
-    if (!auth?.token) throw new Error('You must be signed in to sync.');
+    if (!auth?.token) throw new Error('Google sync API is not configured for Supabase session tokens yet.');
     const response = await api.googleSync(auth.token, { force });
     update((s) => ({
       ...s,
@@ -314,7 +314,7 @@ export function OSProvider({ children, auth }) {
   };
 
   const connectGoogleCalendar = async ({ accessToken, refreshToken, email, expiresAt }) => {
-    if (!auth?.token) throw new Error('You must be signed in to connect Google.');
+    if (!auth?.token) throw new Error('Google sync API is not configured for Supabase session tokens yet.');
     await api.googleConnect(auth.token, { accessToken, refreshToken, email, expiresAt });
     update((s) => ({
       ...s,
@@ -330,7 +330,7 @@ export function OSProvider({ children, auth }) {
   };
 
   const disconnectGoogleCalendar = async () => {
-    if (!auth?.token) throw new Error('You must be signed in to disconnect Google.');
+    if (!auth?.token) throw new Error('Google sync API is not configured for Supabase session tokens yet.');
     await api.googleDisconnect(auth.token);
     update((s) => ({
       ...s,
@@ -353,7 +353,7 @@ export function OSProvider({ children, auth }) {
   };
 
   const fetchGoogleCalendars = async () => {
-    if (!auth?.token) throw new Error('You must be signed in to fetch calendars.');
+    if (!auth?.token) throw new Error('Google sync API is not configured for Supabase session tokens yet.');
     const payload = await api.googleCalendars(auth.token);
     return payload.calendars ?? [];
   };

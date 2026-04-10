@@ -180,6 +180,7 @@ function DailyEvents() {
   };
 
   useEffect(() => {
+    if (!state.settings?.googleCalendar?.connected) return;
     const lastSynced = state.settings?.googleCalendar?.lastSyncedAt;
     const lastSyncedMs = lastSynced ? new Date(lastSynced).getTime() : 0;
     if (lastSyncedMs && Date.now() - lastSyncedMs < 5 * 60 * 1000) return;

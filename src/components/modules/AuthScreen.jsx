@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export default function AuthScreen({ onSignIn, onSignUp, loading = false }) {
+export default function AuthScreen({ onSignIn, onSignUp, onGoogleSignIn, loading = false }) {
   const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,6 +31,17 @@ export default function AuthScreen({ onSignIn, onSignUp, loading = false }) {
     } catch (err) {
       setError(err.message || 'Authentication failed.');
     } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const signInGoogle = async () => {
+    setError('');
+    setSubmitting(true);
+    try {
+      await onGoogleSignIn?.();
+    } catch (err) {
+      setError(err.message || 'Google sign-in failed.');
       setSubmitting(false);
     }
   };
@@ -80,6 +91,15 @@ export default function AuthScreen({ onSignIn, onSignUp, loading = false }) {
             className="w-full py-2.5 rounded-xl text-sm font-semibold bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] hover:opacity-90 transition-opacity disabled:opacity-40"
           >
             {busy ? 'Please wait...' : (mode === 'signin' ? 'Login' : 'Sign up')}
+          </button>
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={signInGoogle}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--surface-inset)] transition-colors disabled:opacity-40"
+          >
+            Continue with Google
           </button>
         </form>
 

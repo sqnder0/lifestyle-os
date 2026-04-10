@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useOS } from '../../context/OSContext';
 
 const STEPS = [
   {
@@ -33,8 +32,8 @@ function StepDots({ current }) {
 }
 
 export default function OnboardingFlow({ onComplete }) {
-  const { update } = useOS();
   const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [sleepTarget, setSleepTarget] = useState(8);
 
@@ -46,25 +45,12 @@ export default function OnboardingFlow({ onComplete }) {
     return true;
   };
 
-  const goNext = () => {
+  const goNext = async () => {
     if (!canContinue()) return;
 
     if (isLast) {
-      update((s) => ({
-        ...s,
-        settings: {
-          ...(s.settings ?? {}),
-          name: firstName.trim(),
-          sleepTarget,
-          metricTargets: {
-            ...(s.settings?.metricTargets ?? {}),
-            sleepHours: sleepTarget,
-          },
-          onboarded: true,
-        },
-        ui: { ...(s.ui ?? {}), activeModule: 'dashboard' },
-      }));
-      onComplete?.();
+      setSaving(true);
+      await onComplete?.({ firstName: firstName.trim(), sleepTarget });
       return;
     }
 
@@ -136,11 +122,11 @@ export default function OnboardingFlow({ onComplete }) {
 
           <button
             onClick={goNext}
-            disabled={!canContinue()}
+            disabled={!canContinue() || saving}
             className="w-full py-3.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]
                        bg-[var(--sidebar-active)] text-[var(--sidebar-active-text)] hover:opacity-90 disabled:opacity-40"
           >
-            {isLast ? 'Get Started' : 'Continue'}
+            {isLast ? (saving ? 'Saving...' : 'Get Started') : 'Continue'}
           </button>
         </div>
       </div>

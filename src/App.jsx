@@ -3,7 +3,7 @@ import { useKeyboard } from './hooks/useKeyboard';
 import CommandPalette from './components/modules/CommandPalette';
 import { OSProvider, useOS } from './context/OSContext';
 import { useDarkMode } from './hooks/useDarkMode';
-import { useApiAuth } from './hooks/useApiAuth';
+import { useSupabaseAuth } from './hooks/useSupabaseAuth';
 import { Settings as SettingsIcon } from 'lucide-react';
 
 // ── Module imports ─────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ import MetricsModule      from './components/modules/MetricsModule';
 import PrinciplesModule   from './components/modules/PrinciplesModule';
 import WeeklyReviewModule from './components/modules/WeeklyReviewModule';
 import HabitsModule     from './components/modules/HabitsModule';
-import ReferenceModule  from './components/modules/ReferenceModule';
+import HealthModule     from './components/modules/ReferenceModule';
 import SettingsModule  from './components/modules/SettingsModule';
 import JournalModule   from './components/modules/JournalModule';
 import OnboardingFlow  from './components/modules/OnboardingFlow';
@@ -26,7 +26,7 @@ const CORE_MODULES = [
   { id: 'capture',   label: 'Inbox',      icon: '↓',  Component: CaptureModule    },
   { id: 'cycles',    label: 'Cycles',     icon: '↻',  Component: CycleModule      },
   { id: 'metrics',   label: 'Metrics',    icon: '◈',  Component: MetricsModule    },
-  { id: 'health',    label: 'Health',     icon: '▣',  Component: ReferenceModule  },
+  { id: 'health',    label: 'Health',     icon: '▣',  Component: HealthModule  },
   { id: 'principles', label: 'Principles', icon: '✦', Component: PrinciplesModule },
 ];
 const SYSTEM_MODULES = [
@@ -435,17 +435,12 @@ function AppShell() {
     setPageKey((k) => k + 1);
   }, [activeModule, setActiveModule]);
 
-  const isOnboarded = state.settings?.onboarded ?? false;
   if (syncLoading) {
     return (
       <div className="min-h-screen bg-[var(--surface-page)] flex items-center justify-center">
         <p className="text-sm text-[var(--text-muted)]">Syncing your workspace...</p>
       </div>
     );
-  }
-
-  if (!isOnboarded) {
-    return <OnboardingFlow onComplete={() => {}} />;
   }
 
   return (
@@ -515,22 +510,36 @@ function AppShell() {
 
 // ── Root ───────────────────────────────────────────────────────────────────
 export default function App() {
-  const auth = useApiAuth();
+  const auth = useSupabaseAuth();
 
-  if (auth.loading) {
+  if (auth.loading || auth.profileLoading) {
     return (
       <div className="min-h-screen bg-[var(--surface-page)] flex items-center justify-center">
-        <p className="text-sm text-[var(--text-muted)]">Checking session...</p>
+        <div className="text-center space-y-2">
+          <p className="text-[10px] font-black tracking-[0.25em] text-[var(--text-muted)] uppercase">OS</p>
+          <p className="text-sm text-[var(--text-muted)]">Initializing OS...</p>
+        </div>
       </div>
     );
   }
 
-  if (!auth.user) {
+  if (!auth.session) {
     return (
       <AuthScreen
         onSignIn={auth.signIn}
         onSignUp={auth.signUp}
+        onGoogleSignIn={auth.signInWithGoogle}
         loading={auth.loading}
+      />
+    );
+  }
+
+  if (!auth.profile?.onboarded) {
+    return (
+      <OnboardingFlow
+        onComplete={async ({ firstName, sleepTarget }) => {
+          await auth.completeOnboarding({ firstName, sleepTarget });
+        }}
       />
     );
   }

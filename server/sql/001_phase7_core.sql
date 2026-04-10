@@ -11,6 +11,7 @@ create table if not exists auth_users (
 
 create table if not exists profiles (
   id uuid primary key references auth_users(id) on delete cascade,
+  first_name text,
   username text,
   settings jsonb not null default '{}'::jsonb,
   google_email text,
