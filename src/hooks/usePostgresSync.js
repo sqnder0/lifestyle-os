@@ -177,20 +177,9 @@ function toServerPayload(state) {
     }
   }
 
-  const syncedEvents = (state.syncedEvents ?? []).map((event) => ({
-    google_event_id: event.google_event_id,
-    calendar_id: event.calendar_id ?? null,
-    start_time: event.start_time,
-    end_time: event.end_time,
-    summary: event.summary ?? '',
-    raw_rrule: event.raw_rrule ?? null,
-    source_status: event.source_status ?? null,
-    created_by_email: event.created_by_email ?? null,
-    attendee_emails: event.attendee_emails ?? [],
-    synced_at: event.synced_at ?? null,
-  }));
-
-  return { profile, captureInbox, metrics, cycleTemplates, syncedEvents, habits, principles };
+  // Synced Google events are owned by /api/google/sync and can be large.
+  // Keep /api/state focused on editable app data to avoid oversized PUT payloads.
+  return { profile, captureInbox, metrics, cycleTemplates, habits, principles };
 }
 
 export function usePostgresSync({ initialState, token }) {

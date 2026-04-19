@@ -36,7 +36,7 @@ const GOOGLE_SCOPES = [
 ].join(' ');
 
 app.use(clientOrigin ? cors({ origin: clientOrigin, credentials: false }) : cors());
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 if (isProduction) {
   app.use(express.static(distPath));
@@ -349,6 +349,7 @@ app.get('/api/state', authMiddleware, async (req, res) => {
 
 app.put('/api/state', authMiddleware, async (req, res) => {
   const payload = req.body || {};
+  const hasSyncedEvents = Object.prototype.hasOwnProperty.call(payload, 'syncedEvents');
   const {
     profile = null,
     captureInbox = [],
@@ -407,36 +408,38 @@ app.put('/api/state', authMiddleware, async (req, res) => {
       );
     }
 
-    await client.query('delete from synced_events where user_id = $1', [req.userId]);
-    for (const event of syncedEvents) {
-      await client.query(
-        `insert into synced_events (
-          user_id,
-          google_event_id,
-          calendar_id,
-          start_time,
-          end_time,
-          summary,
-          raw_rrule,
-          source_status,
-          created_by_email,
-          attendee_emails,
-          synced_at
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, coalesce($11::timestamptz, now()))`,
-        [
-          req.userId,
-          event.google_event_id,
-          event.calendar_id ?? null,
-          event.start_time,
-          event.end_time,
-          event.summary ?? '',
-          event.raw_rrule ?? null,
-          event.source_status ?? null,
-          event.created_by_email ?? null,
-          JSON.stringify(event.attendee_emails ?? []),
-          event.synced_at ?? null,
-        ],
-      );
+    if (hasSyncedEvents) {
+      await client.query('delete from synced_events where user_id = $1', [req.userId]);
+      for (const event of syncedEvents) {
+        await client.query(
+          `insert into synced_events (
+            user_id,
+            google_event_id,
+            calendar_id,
+            start_time,
+            end_time,
+            summary,
+            raw_rrule,
+            source_status,
+            created_by_email,
+            attendee_emails,
+            synced_at
+          ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, coalesce($11::timestamptz, now()))`,
+          [
+            req.userId,
+            event.google_event_id,
+            event.calendar_id ?? null,
+            event.start_time,
+            event.end_time,
+            event.summary ?? '',
+            event.raw_rrule ?? null,
+            event.source_status ?? null,
+            event.created_by_email ?? null,
+            JSON.stringify(event.attendee_emails ?? []),
+            event.synced_at ?? null,
+          ],
+        );
+      }
     }
 
     await client.query('delete from habits where user_id = $1', [req.userId]);
