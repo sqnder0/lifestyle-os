@@ -4,7 +4,7 @@
 
 Lifestyle OS is a single-page React app for personal planning and execution with a cycle-based schedule, daily metrics, habits, journaling, principles, and a health-oriented briefing surface.
 
-Current architecture is Supabase-first for auth and persisted app state. A separate Express server still exists for API endpoints (health checks, legacy auth/state routes, and Google Calendar sync endpoints).
+Current architecture uses Google OAuth for authentication and an Express + PostgreSQL API for persisted app state and Google Calendar sync.
 
 ## 2. Stack and runtime
 
@@ -12,8 +12,8 @@ Current architecture is Supabase-first for auth and persisted app state. A separ
 - Styling: Tailwind CSS + CSS variable design tokens
 - Icons: lucide-react
 - State: React Context + custom hooks
-- Primary persistence: Supabase client (`@supabase/supabase-js`) from the browser
-- Secondary backend: Node.js + Express + PostgreSQL (`pg`) for server routes and Google Calendar sync
+- Primary persistence: Express API + PostgreSQL (`pg`)
+- Auth: Google OAuth + JWT session tokens
 
 ## 3. Setup and run
 
@@ -22,7 +22,7 @@ Current architecture is Supabase-first for auth and persisted app state. A separ
 - Node.js 18+
 - npm
 - PostgreSQL (required for Express server routes)
-- Supabase project (required for app auth + sync in current UI flow)
+- Google Cloud OAuth client (required for app auth + calendar access)
 
 ### Install
 
@@ -74,12 +74,10 @@ npm test
 
 ## 4. Environment configuration
 
-The project currently needs both Supabase frontend env vars and backend env vars if server routes are used.
+The project requires frontend API configuration and backend OAuth/Postgres env vars.
 
 ### Frontend env vars
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
 - `VITE_API_URL` (optional, defaults to `/api` and used by `src/lib/api.js`)
 
 ### Backend env vars
@@ -91,6 +89,7 @@ The project currently needs both Supabase frontend env vars and backend env vars
 - `DATABASE_SSL`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI`
 
 Reference values are in `.env.example`.
 
@@ -147,8 +146,8 @@ src/
 ### Root flow
 
 1. `src/main.jsx` renders `App`.
-2. `App` initializes auth via `useSupabaseAuth`.
-3. If no Supabase session, `AuthScreen` is shown.
+2. `App` initializes auth via `useSupabaseAuth` (Google OAuth + JWT session).
+3. If no JWT session, `AuthScreen` is shown.
 4. If authenticated but not onboarded, `OnboardingFlow` is shown.
 5. Otherwise `OSProvider` wraps `AppShell`.
 
@@ -223,18 +222,20 @@ State mutations and selectors are centralized in `src/context/OSContext.jsx`.
 
 ### Current primary path
 
-- Auth: Supabase auth (`useSupabaseAuth`)
-- State hydration/sync: direct Supabase table reads and writes (`usePostgresSync`)
+- Auth: Google OAuth + JWT (`useSupabaseAuth`)
+- State hydration/sync: API-backed reads and writes (`usePostgresSync` -> `/api/state`)
 - App does optimistic local updates and flushes changes with a short debounce
 - Polling refresh runs periodically when state is clean
 
-### Supabase tables actively used by frontend sync
+### PostgreSQL tables actively used by frontend sync
 
 - `profiles`
 - `capture_inbox`
 - `metrics`
 - `cycle_templates`
 - `synced_events`
+- `habits`
+- `principles`
 
 ### Mapping behavior
 
@@ -247,8 +248,8 @@ State mutations and selectors are centralized in `src/context/OSContext.jsx`.
 `server/index.js` currently provides:
 
 - `/api/health`
-- Legacy auth routes (`/api/auth/*`)
-- Legacy bulk state routes (`/api/state` GET/PUT)
+- Auth routes (`/api/auth/google/start`, `/api/auth/google/callback`, `/api/auth/me`)
+- Bulk state routes (`/api/state` GET/PUT)
 - Google integration routes:
   - `/api/google/status`
   - `/api/google/connect`
@@ -256,7 +257,7 @@ State mutations and selectors are centralized in `src/context/OSContext.jsx`.
   - `/api/google/calendars`
   - `/api/google/sync`
 
-Important: the frontend auth token is Supabase session-based. `OSContext` currently guards Google calls with a warning/error message indicating these routes are not fully wired for Supabase session tokens yet. Treat Google sync as partially integrated and validate auth compatibility before expanding this area.
+Important: the frontend auth token is JWT-based and used across both state sync and Google Calendar routes.
 
 ## 10. Cycle engine rules
 
@@ -301,7 +302,7 @@ Daily physical briefing uses cycle plans + reference data and can downgrade high
 
 ## 14. Operational notes and risks
 
-- Missing Supabase env vars does not hard-crash boot, but auth/persistence flows will fail.
+- Missing Google OAuth env vars will block authentication and calendar sync.
 - Backend routes depend on PostgreSQL availability and schema setup.
 - Express auto-runs `server/sql/001_phase7_core.sql` at startup.
 - Google integration stores sensitive tokens in `profiles`; handle carefully in production environments.
@@ -339,7 +340,7 @@ Daily physical briefing uses cycle plans + reference data and can downgrade high
 ## 16. Suggested manual test checklist
 
 - App shows auth screen when unauthenticated.
-- Sign in/up through Supabase works.
+- Sign in with Google works.
 - Onboarding is shown once and persists.
 - Reload restores session and state.
 - Command palette and shortcut navigation works.
@@ -355,8 +356,8 @@ Daily physical briefing uses cycle plans + reference data and can downgrade high
 - `src/App.jsx`: module registry, shell layout, auth/onboarding gates
 - `src/context/OSContext.jsx`: shared state actions and selectors
 - `src/hooks/useSupabaseAuth.js`: session/profile lifecycle
-- `src/hooks/usePostgresSync.js`: Supabase hydration, optimistic writes, refresh
-- `src/lib/supabase.js`: Supabase client bootstrap
+- `src/hooks/usePostgresSync.js`: API hydration, optimistic writes, refresh
+- `src/lib/supabase.js`: legacy Supabase client bootstrap (unused in current auth flow)
 - `src/lib/api.js`: API helper (currently used for google endpoints)
 - `src/utils/schema.js`: seed defaults, factories, constants
 - `src/utils/cycleEngine.js`: cycle/day resolution and briefing logic

@@ -167,7 +167,7 @@ export default function SettingsModule() {
   };
 
   const recurringCandidates = state.ui?.pendingGoogleRecurringImports ?? [];
-  const providerList = linkedProviders?.length ? linkedProviders : ['email'];
+  const providerList = linkedProviders?.length ? linkedProviders : ['google'];
 
   return (
     <div className="h-full overflow-y-auto">
@@ -185,7 +185,7 @@ export default function SettingsModule() {
             </span>
           </SettingRow>
 
-          <SettingRow label="Linked providers" sub="Identities available for sign-in and calendar linking">
+          <SettingRow label="Linked providers" sub="Identity available for sign-in and calendar sync">
             <div className="flex flex-wrap justify-end gap-1.5">
               {providerList.map((provider) => (
                 <span
@@ -204,7 +204,7 @@ export default function SettingsModule() {
               className="w-full text-xs px-4 py-2 rounded-xl border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--surface-inset)] transition-colors inline-flex items-center justify-center gap-2"
             >
               <Link2 size={14} />
-              {providerList.includes('google') ? 'Relink Google Account' : 'Link Google Account'}
+              {providerList.includes('google') ? 'Reconnect Google Account' : 'Connect Google Account'}
             </button>
             <button
               onClick={onSyncNow}
@@ -413,8 +413,8 @@ export default function SettingsModule() {
           <SettingRow label="Version" sub="">
             <span className="text-xs text-[var(--text-muted)] font-mono">v1.0.0</span>
           </SettingRow>
-          <SettingRow label="Storage" sub="Data persisted through Supabase + Postgres sync">
-            <span className="text-xs text-[var(--text-muted)]">supabase · postgres</span>
+          <SettingRow label="Storage" sub="Data persisted in Postgres, calendar synced from Google">
+            <span className="text-xs text-[var(--text-muted)]">postgres · google calendar</span>
           </SettingRow>
           <div className="py-2">
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">

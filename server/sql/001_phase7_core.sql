@@ -5,9 +5,18 @@ create extension if not exists pgcrypto;
 create table if not exists auth_users (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
-  password_hash text not null,
+  password_hash text,
+  google_subject text,
   created_at timestamptz not null default now()
 );
+
+alter table auth_users
+  add column if not exists google_subject text;
+
+alter table auth_users
+  alter column password_hash drop not null;
+
+create unique index if not exists auth_users_google_subject_idx on auth_users(google_subject);
 
 create table if not exists profiles (
   id uuid primary key references auth_users(id) on delete cascade,

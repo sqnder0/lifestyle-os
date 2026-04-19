@@ -1,63 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 
-async function ensureProfile(user) {
-  if (!user?.id) return null;
+const TOKEN_KEY = 'lifestyle-os-token';
 
-  const { data: existing, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .maybeSingle();
+function readAuthParams() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const token = searchParams.get('auth_token') || hashParams.get('auth_token');
+  const error = searchParams.get('auth_error') || hashParams.get('auth_error');
 
-  if (error) throw error;
-
-  if (existing) return existing;
-
-  const fallbackName =
-    user.user_metadata?.first_name
-    || user.user_metadata?.name
-    || user.email?.split('@')?.[0]
-    || '';
-
-  const insertPayload = {
-    id: user.id,
-    first_name: fallbackName,
-    onboarded: false,
-    settings: {},
-  };
-
-  const { data: created, error: createError } = await supabase
-    .from('profiles')
-    .upsert(insertPayload, { onConflict: 'id' })
-    .select('*')
-    .single();
-
-  if (createError) throw createError;
-  return created;
-}
-
-async function persistGoogleBridgeTokens(nextSession, profileRow) {
-  if (!nextSession?.user?.id) return;
-
-  const provider = nextSession?.user?.app_metadata?.provider;
-  if (provider !== 'google') return;
-  if (!nextSession?.provider_token) return;
-
-  const payload = {
-    id: nextSession.user.id,
-    google_access_token: nextSession.provider_token,
-    google_email: nextSession.user.email?.toLowerCase?.() ?? profileRow?.google_email ?? null,
-    google_token_expires_at: nextSession.expires_at
-      ? new Date(nextSession.expires_at * 1000).toISOString()
-      : null,
-  };
-
-  if (nextSession.provider_refresh_token) {
-    payload.google_refresh_token = nextSession.provider_refresh_token;
+  if (token || error) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('auth_token');
+    url.searchParams.delete('auth_error');
+    if (url.hash) {
+      const nextHashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
+      nextHashParams.delete('auth_token');
+      nextHashParams.delete('auth_error');
+      const nextHash = nextHashParams.toString();
+      url.hash = nextHash ? `#${nextHash}` : '';
+    }
+    window.history.replaceState({}, document.title, url.toString());
   }
 
-  await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
+  return { token, error };
 }
 
 export function useSupabaseAuth() {
@@ -67,26 +33,22 @@ export function useSupabaseAuth() {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
-  const userRef = useRef(null);
+  const tokenRef = useRef(null);
 
-  useEffect(() => {
-    userRef.current = user;
-  }, [user]);
-
-  const refreshProfile = useCallback(async (nextUser) => {
-    const targetUser = nextUser ?? userRef.current;
-
-    if (!targetUser?.id) {
+  const loadProfile = useCallback(async (token) => {
+    if (!token) {
+      setUser(null);
       setProfile(null);
       return null;
     }
 
     setProfileLoading(true);
     try {
-      const row = await ensureProfile(targetUser);
-      setProfile(row);
+      const payload = await api.get('/auth/me', token);
+      setUser(payload.user ?? null);
+      setProfile(payload.profile ?? null);
       setAuthError(null);
-      return row;
+      return payload.profile ?? null;
     } catch (error) {
       const message = error?.message || 'Failed to load profile.';
       setAuthError(message);
@@ -101,29 +63,32 @@ export function useSupabaseAuth() {
 
     async function bootstrap() {
       try {
-        const { data, error } = await supabase.auth.getSession();
+        const { token: urlToken, error } = readAuthParams();
         if (!mounted) return;
 
-        if (error) {
-          setAuthError(error.message || 'Failed to restore session.');
-          return;
+        if (urlToken) {
+          localStorage.setItem(TOKEN_KEY, urlToken);
         }
 
-        const nextSession = data?.session ?? null;
-        setSession(nextSession);
-        setUser(nextSession?.user ?? null);
+        if (error) {
+          setAuthError(error);
+        }
 
-        if (nextSession?.user) {
+        const storedToken = urlToken || localStorage.getItem(TOKEN_KEY);
+        tokenRef.current = storedToken;
+        setSession(storedToken ? { access_token: storedToken } : null);
+
+        if (storedToken) {
           try {
-            const row = await refreshProfile(nextSession.user);
-            await persistGoogleBridgeTokens(nextSession, row).catch((persistError) => {
-              console.error('Google token bridge persistence failed', persistError);
-            });
+            await loadProfile(storedToken);
           } catch (profileError) {
             console.error('Profile bootstrap failed', profileError);
-            if (mounted) setProfile(null);
+            localStorage.removeItem(TOKEN_KEY);
+            tokenRef.current = null;
+            setSession(null);
           }
         } else {
+          setUser(null);
           setProfile(null);
         }
       } catch (error) {
@@ -137,125 +102,24 @@ export function useSupabaseAuth() {
 
     bootstrap();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession ?? null);
-      setUser(nextSession?.user ?? null);
-
-      if (nextSession?.user) {
-        refreshProfile(nextSession.user).then((row) => persistGoogleBridgeTokens(nextSession, row).catch((persistError) => {
-          console.error('Google token bridge persistence failed', persistError);
-        })).catch((error) => {
-          console.error('Profile refresh failed after auth state change', error);
-          setProfile(null);
-        });
-      } else {
-        setProfile(null);
-        setAuthError(null);
-      }
-    });
-
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
     };
-  }, [refreshProfile]);
+  }, [loadProfile]);
 
-  const signIn = useCallback(async ({ email, password }) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-  }, []);
-
-  const signUp = useCallback(async ({ email, password }) => {
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
-  }, []);
+  const refreshProfile = useCallback(async () => loadProfile(tokenRef.current), [loadProfile]);
 
   const signInWithGoogle = useCallback(async () => {
-    const redirectTo = `${window.location.origin}/`;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo,
-        scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    });
-
-    if (error) throw error;
+    const startUrl = new URL(`${api.baseUrl}/auth/google/start`, window.location.origin);
+    startUrl.searchParams.set('redirect', window.location.origin);
+    window.location.assign(startUrl.toString());
   }, []);
 
   const linkGoogleIdentity = useCallback(async () => {
-    const redirectTo = `${window.location.origin}/`;
-
-    if (typeof supabase.auth.linkIdentity === 'function') {
-      const { data, error } = await supabase.auth.linkIdentity({
-        provider: 'google',
-        options: {
-          redirectTo,
-          scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.url) {
-        window.location.assign(data.url);
-      }
-      return;
-    }
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo,
-        scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    });
-    if (error) throw error;
-  }, []);
-
-  const linkedProviders = useMemo(() => {
-    const identityProviders = Array.isArray(user?.identities)
-      ? user.identities.map((identity) => identity.provider).filter(Boolean)
-      : [];
-
-    const appProviders = Array.isArray(user?.app_metadata?.providers)
-      ? user.app_metadata.providers
-      : [];
-
-    return [...new Set([...identityProviders, ...appProviders])];
-  }, [user]);
-
-  const googleIdentityTokens = useMemo(() => {
-    const provider = session?.user?.app_metadata?.provider || null;
-    if (provider !== 'google' && !linkedProviders.includes('google')) {
-      return null;
-    }
-
-    if (!session?.provider_token) return null;
-
-    return {
-      accessToken: session.provider_token,
-      refreshToken: session.provider_refresh_token ?? null,
-      expiresAt: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
-      email: session.user?.email ?? null,
-    };
-  }, [session, linkedProviders]);
+    await signInWithGoogle();
+  }, [signInWithGoogle]);
 
   const completeOnboarding = useCallback(async ({ firstName, settingsPatch = {} } = {}) => {
-    if (!user?.id) throw new Error('No authenticated user.');
-
     const cleanName = (firstName || profile?.first_name || '').trim();
     const nextSettings = {
       ...(profile?.settings ?? {}),
@@ -263,28 +127,31 @@ export function useSupabaseAuth() {
       ...settingsPatch,
       onboarded: true,
     };
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({
-        first_name: cleanName,
-        username: cleanName,
-        onboarded: true,
-        settings: nextSettings,
-      })
-      .eq('id', user.id)
-      .select('*')
-      .single();
-
-    if (error) throw error;
-    setProfile(data);
-    return data;
-  }, [user, profile]);
+    const nextProfile = {
+      ...(profile ?? {}),
+      first_name: cleanName,
+      username: cleanName,
+      settings: nextSettings,
+      onboarded: true,
+    };
+    setProfile(nextProfile);
+    return nextProfile;
+  }, [profile]);
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    const token = tokenRef.current;
+    tokenRef.current = null;
+    localStorage.removeItem(TOKEN_KEY);
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+    setAuthError(null);
+    if (token) {
+      api.post('/auth/logout', {}, token).catch(() => {});
+    }
   }, []);
+
+  const linkedProviders = useMemo(() => (user ? ['google'] : []), [user]);
 
   return useMemo(() => ({
     session,
@@ -295,9 +162,6 @@ export function useSupabaseAuth() {
     profileLoading,
     authError,
     linkedProviders,
-    googleIdentityTokens,
-    signIn,
-    signUp,
     signInWithGoogle,
     linkGoogleIdentity,
     signOut,
@@ -311,9 +175,6 @@ export function useSupabaseAuth() {
     profileLoading,
     authError,
     linkedProviders,
-    googleIdentityTokens,
-    signIn,
-    signUp,
     signInWithGoogle,
     linkGoogleIdentity,
     signOut,

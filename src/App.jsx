@@ -544,10 +544,9 @@ export default function App() {
   if (!auth.session) {
     return (
       <AuthScreen
-        onSignIn={auth.signIn}
-        onSignUp={auth.signUp}
         onGoogleSignIn={auth.signInWithGoogle}
         loading={auth.loading}
+        errorMessage={auth.authError}
       />
     );
   }

@@ -1,18 +1,10 @@
 import jwt from 'jsonwebtoken';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const TOKEN_TTL = '7d';
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-const supabaseAuthClient = SUPABASE_URL && SUPABASE_ANON_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-  : null;
+const STATE_TTL = '10m';
 
 function requireSecret() {
   if (!process.env.JWT_SECRET) {
@@ -30,12 +22,18 @@ export function verifyToken(token) {
   return jwt.verify(token, process.env.JWT_SECRET);
 }
 
-async function verifySupabaseToken(token) {
-  if (!supabaseAuthClient) return null;
+export function signAuthState(payload) {
+  requireSecret();
+  return jwt.sign({ ...payload, type: 'oauth_state' }, process.env.JWT_SECRET, { expiresIn: STATE_TTL });
+}
 
-  const { data, error } = await supabaseAuthClient.auth.getUser(token);
-  if (error || !data?.user?.id) return null;
-  return data.user.id;
+export function verifyAuthState(token) {
+  requireSecret();
+  const payload = jwt.verify(token, process.env.JWT_SECRET);
+  if (payload?.type !== 'oauth_state') {
+    throw new Error('Invalid OAuth state token');
+  }
+  return payload;
 }
 
 export async function authMiddleware(req, res, next) {
@@ -51,11 +49,6 @@ export async function authMiddleware(req, res, next) {
     req.userId = payload.sub;
     return next();
   } catch {
-    const supabaseUserId = await verifySupabaseToken(token);
-    if (supabaseUserId) {
-      req.userId = supabaseUserId;
-      return next();
-    }
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }

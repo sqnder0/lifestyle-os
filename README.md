@@ -2,7 +2,7 @@
 
 Lifestyle OS is a single-page React application for planning, execution, and daily physical strategy. It combines a cycle-based schedule, an inbox, project management, metrics, habits, CRM, journaling, principles, and a dashboard that now acts as a simple daily briefing.
 
-This version is no longer localStorage-only. It uses a PostgreSQL-backed API with email/password authentication, user-scoped data, optimistic updates, and a lightweight polling-based refresh loop for cross-session sync.
+This version is no longer localStorage-only. It uses a PostgreSQL-backed API with Google OAuth authentication, user-scoped data, optimistic updates, and a lightweight polling-based refresh loop for cross-session sync.
 
 For production deployment, use the included [Dockerfile](Dockerfile). It builds the frontend and runs the Express API in one container, which is the simplest production path for this app.
 
@@ -13,7 +13,7 @@ For production deployment, use the included [Dockerfile](Dockerfile). It builds 
 - Capture inbox and project/task management
 - Metrics tracking for energy, sleep, and mood
 - Reference library for workouts, meal protocols, recovery protocols, and pantry essentials
-- PostgreSQL-backed auth with login/signup and sign out
+- Google OAuth sign-in with calendar access
 - Optimistic sync to the API with background persistence
 - React + Vite frontend with Tailwind styling
 
@@ -31,15 +31,14 @@ For production deployment, use the included [Dockerfile](Dockerfile). It builds 
 
 - Node.js + Express
 - PostgreSQL via `pg`
-- Password hashing with `bcryptjs`
-- JWT auth with `jsonwebtoken`
+- Google OAuth code exchange + JWT session tokens
 - CORS configured for the frontend origin
 
 ### Data model
 
 The PostgreSQL schema is defined in [server/sql/001_phase7_core.sql](server/sql/001_phase7_core.sql) and includes:
 
-- `auth_users` - email/password authentication records
+- `auth_users` - Google identity records
 - `profiles` - user profile, settings, onboarding flag
 - `capture_inbox` - inbox items
 - `projects` - project records plus JSON metadata
@@ -76,6 +75,9 @@ API_PORT=4000
 CLIENT_ORIGIN=http://localhost:5173
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/lifestyle_os
 JWT_SECRET=change-me
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:4000/api/auth/google/callback
 ```
 
 5. Apply the SQL migration in your PostgreSQL database.
@@ -94,7 +96,7 @@ npm run api
 npm run dev
 ```
 
-8. Open the app and sign up with email/password.
+8. Open the app and sign in with Google.
 
 ## Development Scripts
 
@@ -192,8 +194,8 @@ The API now runs the schema file automatically on startup, so the tables will be
 ## Authentication Flow
 
 1. User opens the app.
-2. If no JWT exists, the login/signup screen is shown.
-3. On successful login or signup, the JWT is stored locally.
+2. If no JWT exists, the Google sign-in screen is shown.
+3. On successful Google OAuth, the JWT is stored locally.
 4. The app fetches the user record and synced state from the API.
 5. The dashboard and modules render only after authentication.
 
@@ -213,6 +215,9 @@ The API now runs the schema file automatically on startup, so the tables will be
 | `CLIENT_ORIGIN` | Allowed browser origin for CORS |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | Secret used to sign auth tokens |
+| `GOOGLE_CLIENT_ID` | Google OAuth client id |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | OAuth redirect URI for Google |
 
 ## Troubleshooting
 
@@ -244,9 +249,9 @@ The API now runs the schema file automatically on startup, so the tables will be
 
 - [src/App.jsx](src/App.jsx) - auth gating and app shell
 - [src/context/OSContext.jsx](src/context/OSContext.jsx) - state mutations and sync integration
-- [src/hooks/useApiAuth.js](src/hooks/useApiAuth.js) - login/signup/session management
+- [src/hooks/useSupabaseAuth.js](src/hooks/useSupabaseAuth.js) - Google auth + session bootstrap
 - [src/hooks/usePostgresSync.js](src/hooks/usePostgresSync.js) - fetch, optimistic writes, refresh loop
-- [src/components/modules/AuthScreen.jsx](src/components/modules/AuthScreen.jsx) - login/signup UI
+- [src/components/modules/AuthScreen.jsx](src/components/modules/AuthScreen.jsx) - Google sign-in UI
 - [server/index.js](server/index.js) - Express API and production static server
 - [server/sql/001_phase7_core.sql](server/sql/001_phase7_core.sql) - PostgreSQL schema
 

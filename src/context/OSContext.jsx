@@ -30,7 +30,7 @@ const OSContext = createContext(null);
 export function OSProvider({ children, auth }) {
   const { state, setState, loading: syncLoading, syncError } = usePostgresSync({
     initialState: SEED_STATE,
-    userId: auth?.user?.id ?? null,
+    token: auth?.token ?? null,
   });
 
   const update = useCallback((fn) => setState((prev) => fn(prev)), [setState]);
@@ -316,20 +316,11 @@ export function OSProvider({ children, auth }) {
     const currentName = (state.settings?.name || auth?.profile?.first_name || '').trim();
     const currentGoals = state.settings?.cycleGoals ?? '';
 
-    if (typeof auth?.completeOnboarding === 'function') {
-      await auth.completeOnboarding({
-        firstName: currentName,
-        settingsPatch: {
-          cycleGoals: currentGoals,
-        },
-      });
-    }
-
-    updateSettings({ onboarded: true });
-
-    if (typeof auth?.refreshProfile === 'function') {
-      auth.refreshProfile().catch(() => {});
-    }
+    updateSettings({
+      name: currentName,
+      cycleGoals: currentGoals,
+      onboarded: true,
+    });
   };
 
   const upsertHabit = (habit) => {
@@ -378,21 +369,6 @@ export function OSProvider({ children, auth }) {
 
   const syncGoogleCalendar = async ({ force = false } = {}) => {
     if (!auth?.token) throw new Error('Missing authenticated session token.');
-
-    const hasConnectedGoogle = Boolean(
-      state.settings?.googleCalendar?.connected
-      && state.settings?.googleCalendar?.email,
-    );
-
-    if (!hasConnectedGoogle && auth?.googleIdentityTokens?.accessToken) {
-      const email = auth?.googleIdentityTokens?.email || auth?.user?.email;
-      await connectGoogleCalendar({
-        accessToken: auth.googleIdentityTokens.accessToken,
-        refreshToken: auth.googleIdentityTokens.refreshToken,
-        email,
-        expiresAt: auth.googleIdentityTokens.expiresAt,
-      });
-    }
 
     const response = await api.googleSync(auth.token, { force });
     update((s) => ({

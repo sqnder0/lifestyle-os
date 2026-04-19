@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
 import { DEFAULT_REFERENCE, uid } from '../utils/schema';
 
 const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -193,15 +193,15 @@ function toServerPayload(state) {
   return { profile, captureInbox, metrics, cycleTemplates, syncedEvents, habits, principles };
 }
 
-export function usePostgresSync({ initialState, userId }) {
+export function usePostgresSync({ initialState, token }) {
   const [state, setState] = useState(initialState);
-  const [loading, setLoading] = useState(Boolean(userId));
+  const [loading, setLoading] = useState(Boolean(token));
   const [syncError, setSyncError] = useState(null);
   const [dirty, setDirty] = useState(false);
   const initializedRef = useRef(false);
 
   useEffect(() => {
-    if (!userId) {
+    if (!token) {
       setState(initialState);
       setLoading(false);
       setSyncError(null);
@@ -214,40 +214,8 @@ export function usePostgresSync({ initialState, userId }) {
 
     (async () => {
       try {
-        const [
-          profileRes,
-          captureRes,
-          metricsRes,
-          cycleRes,
-          syncedRes,
-          habitsRes,
-          principlesRes,
-        ] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-          supabase.from('capture_inbox').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-          supabase.from('metrics').select('*').eq('user_id', userId).order('date', { ascending: true }),
-          supabase.from('cycle_templates').select('*').eq('user_id', userId),
-          supabase.from('synced_events').select('*').eq('user_id', userId).order('start_time', { ascending: true }),
-          supabase.from('habits').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-          supabase.from('principles').select('*').eq('user_id', userId).order('principle_order', { ascending: true }),
-        ]);
-
+        const payload = await api.get('/state', token);
         if (cancelled) return;
-
-        if (profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error || habitsRes.error || principlesRes.error) {
-          throw profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error || habitsRes.error || principlesRes.error;
-        }
-
-        const payload = {
-          profile: profileRes.data,
-          captureInbox: captureRes.data ?? [],
-          metrics: metricsRes.data ?? [],
-          cycleTemplates: cycleRes.data ?? [],
-          syncedEvents: syncedRes.data ?? [],
-          habits: habitsRes.data ?? [],
-          principles: principlesRes.data ?? [],
-        };
-
         setState(mapFromServer(initialState, payload));
         initializedRef.current = true;
         setDirty(false);
@@ -263,7 +231,7 @@ export function usePostgresSync({ initialState, userId }) {
     return () => {
       cancelled = true;
     };
-  }, [userId, initialState]);
+  }, [token, initialState]);
 
   const setSyncedState = useCallback((updater) => {
     setState((prev) => (typeof updater === 'function' ? updater(prev) : updater));
@@ -273,77 +241,12 @@ export function usePostgresSync({ initialState, userId }) {
   }, []);
 
   useEffect(() => {
-    if (!userId || !initializedRef.current || !dirty) return;
+    if (!token || !initializedRef.current || !dirty) return;
 
     const timer = setTimeout(async () => {
       try {
         const payload = toServerPayload(state);
-
-        const profilePayload = payload.profile;
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            id: userId,
-            first_name: profilePayload.username ?? '',
-            username: profilePayload.username ?? '',
-            onboarded: Boolean(profilePayload.onboarded),
-            settings: profilePayload.settings ?? {},
-          }, { onConflict: 'id' });
-        if (profileError) throw profileError;
-
-        const { error: captureDeleteError } = await supabase.from('capture_inbox').delete().eq('user_id', userId);
-        if (captureDeleteError) throw captureDeleteError;
-        if (payload.captureInbox.length) {
-          const { error: captureInsertError } = await supabase.from('capture_inbox').insert(
-            payload.captureInbox.map((item) => ({ ...item, user_id: userId })),
-          );
-          if (captureInsertError) throw captureInsertError;
-        }
-
-        const { error: metricDeleteError } = await supabase.from('metrics').delete().eq('user_id', userId);
-        if (metricDeleteError) throw metricDeleteError;
-        if (payload.metrics.length) {
-          const { error: metricInsertError } = await supabase.from('metrics').insert(
-            payload.metrics.map((item) => ({ ...item, user_id: userId })),
-          );
-          if (metricInsertError) throw metricInsertError;
-        }
-
-        const { error: cycleDeleteError } = await supabase.from('cycle_templates').delete().eq('user_id', userId);
-        if (cycleDeleteError) throw cycleDeleteError;
-        if (payload.cycleTemplates.length) {
-          const { error: cycleInsertError } = await supabase.from('cycle_templates').insert(
-            payload.cycleTemplates.map((item) => ({ ...item, user_id: userId })),
-          );
-          if (cycleInsertError) throw cycleInsertError;
-        }
-
-        const { error: syncedDeleteError } = await supabase.from('synced_events').delete().eq('user_id', userId);
-        if (syncedDeleteError) throw syncedDeleteError;
-        if (payload.syncedEvents.length) {
-          const { error: syncedInsertError } = await supabase.from('synced_events').insert(
-            payload.syncedEvents.map((item) => ({ ...item, user_id: userId })),
-          );
-          if (syncedInsertError) throw syncedInsertError;
-        }
-
-        const { error: habitsDeleteError } = await supabase.from('habits').delete().eq('user_id', userId);
-        if (habitsDeleteError) throw habitsDeleteError;
-        if (payload.habits.length) {
-          const { error: habitsInsertError } = await supabase.from('habits').insert(
-            payload.habits.map((item) => ({ ...item, user_id: userId })),
-          );
-          if (habitsInsertError) throw habitsInsertError;
-        }
-
-        const { error: principlesDeleteError } = await supabase.from('principles').delete().eq('user_id', userId);
-        if (principlesDeleteError) throw principlesDeleteError;
-        if (payload.principles.length) {
-          const { error: principlesInsertError } = await supabase.from('principles').insert(
-            payload.principles.map((item) => ({ ...item, user_id: userId })),
-          );
-          if (principlesInsertError) throw principlesInsertError;
-        }
+        await api.put('/state', payload, token);
 
         setDirty(false);
         setSyncError(null);
@@ -353,45 +256,15 @@ export function usePostgresSync({ initialState, userId }) {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [state, userId, dirty]);
+  }, [state, token, dirty]);
 
   useEffect(() => {
-    if (!userId || !initializedRef.current) return undefined;
+    if (!token || !initializedRef.current) return undefined;
 
     const timer = setInterval(async () => {
       if (dirty) return;
       try {
-        const [
-          profileRes,
-          captureRes,
-          metricsRes,
-          cycleRes,
-          syncedRes,
-          habitsRes,
-          principlesRes,
-        ] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-          supabase.from('capture_inbox').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-          supabase.from('metrics').select('*').eq('user_id', userId).order('date', { ascending: true }),
-          supabase.from('cycle_templates').select('*').eq('user_id', userId),
-          supabase.from('synced_events').select('*').eq('user_id', userId).order('start_time', { ascending: true }),
-          supabase.from('habits').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-          supabase.from('principles').select('*').eq('user_id', userId).order('principle_order', { ascending: true }),
-        ]);
-
-        if (profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error || habitsRes.error || principlesRes.error) {
-          throw profileRes.error || captureRes.error || metricsRes.error || cycleRes.error || syncedRes.error || habitsRes.error || principlesRes.error;
-        }
-
-        const payload = {
-          profile: profileRes.data,
-          captureInbox: captureRes.data ?? [],
-          metrics: metricsRes.data ?? [],
-          cycleTemplates: cycleRes.data ?? [],
-          syncedEvents: syncedRes.data ?? [],
-          habits: habitsRes.data ?? [],
-          principles: principlesRes.data ?? [],
-        };
+        const payload = await api.get('/state', token);
         setState((prev) => mapFromServer(prev, payload));
       } catch {
         // Best-effort polling; failures are ignored and retried on next tick.
@@ -399,7 +272,7 @@ export function usePostgresSync({ initialState, userId }) {
     }, 8000);
 
     return () => clearInterval(timer);
-  }, [userId, dirty]);
+  }, [token, dirty]);
 
   return useMemo(() => ({
     state,

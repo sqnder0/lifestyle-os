@@ -1,12 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getClient, query } from './db.js';
-import { authMiddleware, signToken } from './auth.js';
+import { authMiddleware, signAuthState, signToken, verifyAuthState } from './auth.js';
 import {
   listCalendars,
   listEvents,
@@ -24,6 +24,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.resolve(__dirname, '..', 'dist');
 const schemaPath = path.resolve(__dirname, 'sql', '001_phase7_core.sql');
+
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
+const GOOGLE_SCOPES = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/calendar.readonly',
+].join(' ');
 
 app.use(clientOrigin ? cors({ origin: clientOrigin, credentials: false }) : cors());
 app.use(express.json());
@@ -61,70 +71,215 @@ async function ensureSchema() {
   }
 }
 
-app.post('/api/auth/signup', async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
+function resolveRedirectTarget(req, redirect) {
+  const fallback = clientOrigin || `${req.protocol}://${req.get('host')}`;
+  if (!redirect) return fallback;
+  try {
+    const target = new URL(redirect);
+    const allowedOrigins = new Set([
+      clientOrigin,
+      req.headers.origin,
+      `${req.protocol}://${req.get('host')}`,
+    ].filter(Boolean));
+    return allowedOrigins.has(target.origin) ? redirect : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getGoogleRedirectUri(req) {
+  return process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+}
+
+async function exchangeGoogleCode(code, redirectUri) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error('Missing Google OAuth client configuration');
   }
 
-  if (password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  const body = new URLSearchParams({
+    code,
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+  });
+
+  const res = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new Error(payload.error_description || 'Failed to exchange Google auth code');
+  }
+
+  return res.json();
+}
+
+async function fetchGoogleUserInfo(accessToken) {
+  const res = await fetch(GOOGLE_USERINFO_URL, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new Error(payload.error_description || 'Failed to fetch Google user info');
+  }
+
+  return res.json();
+}
+
+async function upsertGoogleUser({ email, subject, name }) {
+  const normalizedEmail = (email || '').toLowerCase();
+  if (!normalizedEmail || !subject) {
+    throw new Error('Missing Google identity payload');
+  }
+
+  const bySubject = await query('select id, email, google_subject from auth_users where google_subject = $1', [subject]);
+  if (bySubject.rowCount) {
+    return bySubject.rows[0];
+  }
+
+  const byEmail = await query('select id, email, google_subject from auth_users where lower(email) = lower($1)', [normalizedEmail]);
+  if (byEmail.rowCount) {
+    const existing = byEmail.rows[0];
+    if (existing.google_subject && existing.google_subject !== subject) {
+      throw new Error('Google account already linked to a different user.');
+    }
+
+    await query('update auth_users set google_subject = $1 where id = $2', [subject, existing.id]);
+    return { ...existing, google_subject: subject };
+  }
+
+  const inserted = await query(
+    'insert into auth_users (email, password_hash, google_subject) values (lower($1), $2, $3) returning id, email',
+    [normalizedEmail, null, subject],
+  );
+  return inserted.rows[0];
+}
+
+app.get('/api/auth/google/start', async (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    return res.status(500).json({ error: 'Missing Google OAuth configuration.' });
+  }
+
+  const redirect = resolveRedirectTarget(req, req.query.redirect);
+  const stateToken = signAuthState({
+    redirect,
+    nonce: crypto.randomBytes(16).toString('hex'),
+  });
+
+  const authUrl = new URL(GOOGLE_AUTH_URL);
+  authUrl.searchParams.set('client_id', clientId);
+  authUrl.searchParams.set('redirect_uri', getGoogleRedirectUri(req));
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('scope', GOOGLE_SCOPES);
+  authUrl.searchParams.set('access_type', 'offline');
+  authUrl.searchParams.set('prompt', 'consent');
+  authUrl.searchParams.set('include_granted_scopes', 'true');
+  authUrl.searchParams.set('state', stateToken);
+
+  return res.redirect(authUrl.toString());
+});
+
+app.get('/api/auth/google/callback', async (req, res) => {
+  const { code, state, error } = req.query || {};
+  if (error) {
+    const redirect = resolveRedirectTarget(req, req.query.redirect);
+    const url = new URL(redirect);
+    url.hash = `auth_error=${encodeURIComponent(String(error))}`;
+    return res.redirect(url.toString());
+  }
+
+  if (!code || !state) {
+    return res.status(400).json({ error: 'Missing OAuth code or state.' });
+  }
+
+  let redirect;
+  try {
+    const payload = verifyAuthState(String(state));
+    redirect = payload?.redirect || resolveRedirectTarget(req, null);
+  } catch (stateError) {
+    return res.status(400).json({ error: stateError.message || 'Invalid OAuth state.' });
   }
 
   try {
-    const existing = await query('select id from auth_users where lower(email) = lower($1)', [email]);
-    if (existing.rowCount) {
-      return res.status(409).json({ error: 'Email already in use.' });
-    }
+    const redirectUri = getGoogleRedirectUri(req);
+    const tokenPayload = await exchangeGoogleCode(String(code), redirectUri);
+    const accessToken = tokenPayload.access_token;
+    const refreshToken = tokenPayload.refresh_token ?? null;
+    const expiresIn = Number(tokenPayload.expires_in || 3600);
+    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const insertUser = await query(
-      'insert into auth_users (email, password_hash) values (lower($1), $2) returning id, email, created_at',
-      [email, passwordHash],
-    );
+    const userInfo = await fetchGoogleUserInfo(accessToken);
+    const email = userInfo.email;
+    const subject = userInfo.sub;
+    const displayName = userInfo.given_name || userInfo.name || (email ? email.split('@')[0] : '');
 
-    const user = insertUser.rows[0];
+    const user = await upsertGoogleUser({ email, subject, name: displayName });
+
     await query(
-      'insert into profiles (id, username, settings, onboarded) values ($1, $2, $3::jsonb, false)',
-      [user.id, null, JSON.stringify({})],
+      `insert into profiles (
+         id,
+         first_name,
+         username,
+         settings,
+         onboarded,
+         google_email,
+         google_access_token,
+         google_refresh_token,
+         google_token_expires_at
+       ) values ($1,$2,$3,$4::jsonb,false,lower($5),$6,$7,$8)
+       on conflict (id) do update
+       set google_email = excluded.google_email,
+           google_access_token = excluded.google_access_token,
+           google_refresh_token = coalesce(excluded.google_refresh_token, profiles.google_refresh_token),
+           google_token_expires_at = excluded.google_token_expires_at,
+           first_name = coalesce(excluded.first_name, profiles.first_name),
+           username = coalesce(excluded.username, profiles.username)`,
+      [
+        user.id,
+        displayName || null,
+        displayName || null,
+        JSON.stringify({}),
+        email,
+        accessToken,
+        refreshToken,
+        expiresAt,
+      ],
     );
 
     const token = signToken(user.id);
-    return res.status(201).json({ token, user: { id: user.id, email: user.email } });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
+    const url = new URL(redirect);
+    url.hash = `auth_token=${encodeURIComponent(token)}`;
+    return res.redirect(url.toString());
+  } catch (authError) {
+    const url = new URL(redirect || resolveRedirectTarget(req, null));
+    url.hash = `auth_error=${encodeURIComponent(authError.message || 'OAuth failed')}`;
+    return res.redirect(url.toString());
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
-  }
-
-  try {
-    const result = await query('select id, email, password_hash from auth_users where lower(email) = lower($1)', [email]);
-    if (!result.rowCount) {
-      return res.status(401).json({ error: 'Invalid credentials.' });
-    }
-
-    const user = result.rows[0];
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) {
-      return res.status(401).json({ error: 'Invalid credentials.' });
-    }
-
-    const token = signToken(user.id);
-    return res.json({ token, user: { id: user.id, email: user.email } });
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
-  }
+app.post('/api/auth/logout', (_req, res) => {
+  res.json({ ok: true });
 });
 
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {
     const result = await query(
-      `select u.id, u.email, p.username, p.settings, p.onboarded
+      `select
+         u.id,
+         u.email,
+         p.first_name,
+         p.username,
+         p.settings,
+         p.onboarded
        from auth_users u
        left join profiles p on p.id = u.id
        where u.id = $1`,
@@ -135,7 +290,16 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
 
-    return res.json({ user: result.rows[0] });
+    const row = result.rows[0];
+    return res.json({
+      user: { id: row.id, email: row.email },
+      profile: {
+        first_name: row.first_name,
+        username: row.username,
+        settings: row.settings ?? {},
+        onboarded: Boolean(row.onboarded),
+      },
+    });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -145,7 +309,7 @@ app.get('/api/state', authMiddleware, async (req, res) => {
   try {
     const [profile, capture, metrics, cycleTemplates, syncedEvents, habits, principles] = await Promise.all([
       query(
-        `select username, settings, onboarded, google_email, google_access_token, google_refresh_token, google_token_expires_at, google_last_synced_at
+        `select first_name, username, settings, onboarded, google_email, google_access_token, google_refresh_token, google_token_expires_at, google_last_synced_at
          from profiles where id = $1`,
         [req.userId],
       ),
@@ -201,13 +365,20 @@ app.put('/api/state', authMiddleware, async (req, res) => {
 
     if (profile) {
       await client.query(
-        `insert into profiles (id, username, settings, onboarded)
-         values ($1, $2, $3::jsonb, $4)
+        `insert into profiles (id, first_name, username, settings, onboarded)
+         values ($1, $2, $3, $4::jsonb, $5)
          on conflict (id) do update
-         set username = excluded.username,
+         set first_name = excluded.first_name,
+             username = excluded.username,
              settings = excluded.settings,
              onboarded = excluded.onboarded`,
-        [req.userId, profile.username ?? null, JSON.stringify(profile.settings ?? {}), Boolean(profile.onboarded)],
+        [
+          req.userId,
+          profile.username ?? null,
+          profile.username ?? null,
+          JSON.stringify(profile.settings ?? {}),
+          Boolean(profile.onboarded),
+        ],
       );
     }
 
