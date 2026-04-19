@@ -48,14 +48,18 @@ export function parseRecurringCadence(rawRRule) {
 }
 
 function isUserOwnedOrParticipating(event, userEmail) {
-  const creatorEmail = event?.creator?.email?.toLowerCase?.() || '';
+  const creatorEmail = event?.creatorEmail?.toLowerCase?.() || '';
+  const organizerEmail = event?.organizerEmail?.toLowerCase?.() || '';
+  const creatorSelf = Boolean(event?.creatorSelf);
+  const organizerSelf = Boolean(event?.organizerSelf);
   const attendees = Array.isArray(event?.attendees) ? event.attendees : [];
   const userAttendee = attendees.find((attendee) => {
     const email = attendee?.email?.toLowerCase?.();
-    return email === userEmail;
+    return email === userEmail || attendee?.self === true;
   });
 
-  if (creatorEmail === userEmail) return true;
+  if (creatorEmail === userEmail || organizerEmail === userEmail) return true;
+  if (creatorSelf || organizerSelf) return true;
   if (!userAttendee) return false;
   return userAttendee.responseStatus !== 'declined';
 }
@@ -174,8 +178,11 @@ export async function listEvents(profile, { calendarId = 'primary', timeMin, tim
     startTime: eventDateTime(event.start),
     endTime: eventDateTime(event.end),
     creatorEmail: event?.creator?.email || null,
+    creatorSelf: Boolean(event?.creator?.self),
+    organizerEmail: event?.organizer?.email || null,
+    organizerSelf: Boolean(event?.organizer?.self),
     attendees: Array.isArray(event.attendees)
-      ? event.attendees.map((a) => ({ email: a.email, responseStatus: a.responseStatus }))
+      ? event.attendees.map((a) => ({ email: a.email, responseStatus: a.responseStatus, self: Boolean(a.self) }))
       : [],
     rawRRule: Array.isArray(event.recurrence) ? event.recurrence.find((r) => r.startsWith('RRULE:')) || null : null,
   }));

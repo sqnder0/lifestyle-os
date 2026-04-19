@@ -681,7 +681,7 @@ app.post('/api/google/sync', authMiddleware, async (req, res) => {
             event.summary,
             event.rawRRule,
             event.status,
-            event.creatorEmail,
+            event.creatorEmail ?? event.organizerEmail,
             JSON.stringify(event.attendees.map((a) => a.email).filter(Boolean)),
           ],
         );
