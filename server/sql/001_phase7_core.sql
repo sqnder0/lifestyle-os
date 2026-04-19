@@ -34,10 +34,23 @@ create table if not exists profiles (
 );
 
 alter table profiles
+  add column if not exists username text,
+  add column if not exists settings jsonb default '{}'::jsonb,
+  add column if not exists google_email text,
   add column if not exists google_access_token text,
   add column if not exists google_refresh_token text,
+  add column if not exists google_token_expires_at timestamptz,
+  add column if not exists google_last_synced_at timestamptz,
   add column if not exists onboarded boolean default false,
   add column if not exists first_name text;
+
+update profiles
+set settings = '{}'::jsonb
+where settings is null;
+
+alter table profiles
+  alter column settings set default '{}'::jsonb,
+  alter column settings set not null;
 
 create table if not exists capture_inbox (
   id uuid primary key default gen_random_uuid(),
