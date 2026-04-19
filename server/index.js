@@ -593,7 +593,18 @@ app.post('/api/google/sync', authMiddleware, async (req, res) => {
          from synced_events where user_id = $1 order by start_time asc`,
         [req.userId],
       );
-      return res.json({ events: existing.rows, throttled: true, lastSyncedAt: profile.google_last_synced_at });
+      return res.json({
+        events: existing.rows,
+        throttled: true,
+        lastSyncedAt: profile.google_last_synced_at,
+        syncDebug: {
+          calendarIds,
+          fetchedCount: null,
+          filteredCount: null,
+          persistedCount: existing.rows.length,
+          reason: 'throttled',
+        },
+      });
     }
 
     const windowStart = new Date();
@@ -706,6 +717,12 @@ app.post('/api/google/sync', authMiddleware, async (req, res) => {
       recurringCandidates,
       lastSyncedAt: new Date().toISOString(),
       throttled: false,
+      syncDebug: {
+        calendarIds,
+        fetchedCount: allEvents.length,
+        filteredCount: filtered.length,
+        persistedCount: rows.rows.length,
+      },
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });

@@ -47,25 +47,24 @@ export function parseRecurringCadence(rawRRule) {
   return { allowed: true, frequency: freq, interval };
 }
 
-function canViewSharedEvent(event, userEmail) {
+function isUserOwnedOrParticipating(event, userEmail) {
   const creatorEmail = event?.creator?.email?.toLowerCase?.() || '';
   const attendees = Array.isArray(event?.attendees) ? event.attendees : [];
-  const accepted = attendees.some((attendee) => {
+  const userAttendee = attendees.find((attendee) => {
     const email = attendee?.email?.toLowerCase?.();
-    return email === userEmail && attendee?.responseStatus === 'accepted';
+    return email === userEmail;
   });
-  return creatorEmail === userEmail || accepted;
+
+  if (creatorEmail === userEmail) return true;
+  if (!userAttendee) return false;
+  return userAttendee.responseStatus !== 'declined';
 }
 
 export function shouldPersistEvent(event, userEmail) {
   if (!event || event.status === 'cancelled') return false;
   if (!userEmail) return false;
 
-  const attendees = Array.isArray(event.attendees) ? event.attendees : [];
-  const userAttendee = attendees.find((a) => a?.email?.toLowerCase?.() === userEmail);
-
-  if (userAttendee?.responseStatus === 'declined') return false;
-  return canViewSharedEvent(event, userEmail);
+  return isUserOwnedOrParticipating(event, userEmail);
 }
 
 async function refreshAccessToken(refreshToken) {
