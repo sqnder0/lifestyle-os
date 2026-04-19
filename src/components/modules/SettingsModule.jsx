@@ -418,7 +418,7 @@ export default function SettingsModule() {
           </SettingRow>
           <div className="py-2">
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              Lifestyle OS is a personal operating system built with React and Tailwind CSS.
+              Lifestyle OS helps you plan, execute, and review your week with one focused system.
             </p>
           </div>
           <div className="py-2">

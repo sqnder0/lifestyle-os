@@ -316,6 +316,15 @@ export function OSProvider({ children, auth }) {
     const currentName = (state.settings?.name || auth?.profile?.first_name || '').trim();
     const currentGoals = state.settings?.cycleGoals ?? '';
 
+    if (typeof auth?.completeOnboarding === 'function') {
+      await auth.completeOnboarding({
+        firstName: currentName,
+        settingsPatch: {
+          cycleGoals: currentGoals,
+        },
+      });
+    }
+
     updateSettings({
       name: currentName,
       cycleGoals: currentGoals,
