@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useOS } from '../../context/OSContext';
 import {
-  todayKey, getCycleLetter, resolveDay,
-  formatDayHeading, formatTime, CYCLE_BADGE,
+  todayKey, getCycleLetter,
+  formatDayHeading, CYCLE_BADGE,
   parseKey, DAYS_SHORT,
 } from '../../utils/cycleEngine';
 import EventBlock from './EventBlock';
@@ -85,9 +85,9 @@ export default function TodayView({ dateKey = todayKey() }) {
   const [noteEdit, setNoteEdit] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
 
-  const { cycles, overrides = {}, cycleStartDate } = state;
+  const { overrides = {}, cycleStartDate } = state;
   const letter   = getCycleLetter(parseKey(dateKey), parseKey(cycleStartDate));
-  const events   = resolveDay(dateKey, cycles, overrides, parseKey(cycleStartDate));
+  const events   = selectors.dayEvents(dateKey);
   const briefing = selectors.dailyBriefing(dateKey);
   const override = overrides[dateKey];
   const isToday  = dateKey === todayKey();

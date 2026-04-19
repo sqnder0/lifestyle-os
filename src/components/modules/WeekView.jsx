@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useOS } from '../../context/OSContext';
 import {
-  getCycleWeekOf, resolveWeek, parseKey, toKey,
-  formatDayHeading, CYCLE_BADGE, todayKey,
-  DAYS_SHORT,
+  getCycleWeekOf, parseKey,
+  CYCLE_BADGE, todayKey,
 } from '../../utils/cycleEngine';
 import EventBlock from './EventBlock';
 import TodayView from './TodayView';
@@ -95,14 +94,14 @@ function DayColumn({ dayInfo, events, override, onSelectDay, isSelected }) {
 
 // ── Main WeekView ─────────────────────────────────────────────────────────
 export default function WeekView() {
-  const { state } = useOS();
-  const { cycles, overrides = {}, cycleStartDate } = state;
+  const { state, selectors } = useOS();
+  const { overrides = {}, cycleStartDate } = state;
 
   const [viewDate, setViewDate]     = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(todayKey());
 
   const week      = getCycleWeekOf(viewDate, parseKey(cycleStartDate));
-  const resolved  = resolveWeek(week.days, cycles, overrides, parseKey(cycleStartDate));
+  const resolved = Object.fromEntries(week.days.map((day) => [day.key, selectors.dayEvents(day.key)]));
 
   const goPrev = () => setViewDate((d) => { const n = new Date(d); n.setDate(n.getDate()-7); return n; });
   const goNext = () => setViewDate((d) => { const n = new Date(d); n.setDate(n.getDate()+7); return n; });

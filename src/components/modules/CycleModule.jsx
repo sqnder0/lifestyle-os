@@ -12,9 +12,10 @@ const TABS = [
 ];
 
 export default function CycleModule() {
-  const { state } = useOS();
+  const { state, applyGoogleRecurringImports } = useOS();
   const { cycleStartDate } = state;
   const [tab, setTab] = useState('week');
+  const pendingRecurringImports = state.ui?.pendingGoogleRecurringImports ?? [];
 
   const currentLetter = getCycleLetter(new Date(), parseKey(cycleStartDate));
 
@@ -48,6 +49,19 @@ export default function CycleModule() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
+        {pendingRecurringImports.length > 0 ? (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-[var(--fill-amber)] px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-amber-700">
+              {pendingRecurringImports.length} recurring Google event{pendingRecurringImports.length === 1 ? '' : 's'} ready to import into cycle templates.
+            </p>
+            <button
+              onClick={applyGoogleRecurringImports}
+              className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+            >
+              Import Recurring
+            </button>
+          </div>
+        ) : null}
         {tab === 'week'     && <div className="h-full overflow-y-auto"><WeekView /></div>}
         {tab === 'today'    && (
           <div className="bg-[var(--surface-raised)] rounded-2xl border border-[var(--border)] p-6 h-full overflow-y-auto">

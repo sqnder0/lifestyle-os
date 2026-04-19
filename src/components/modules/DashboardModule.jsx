@@ -164,8 +164,10 @@ function DailyEvents() {
   const { selectors, syncGoogleCalendar, state } = useOS();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const briefing = selectors.dailyBriefing(todayKey());
-  const events = briefing.mergedEvents ?? [];
+  const events = selectors.dayEvents(todayKey());
+  const connected = Boolean(state.settings?.googleCalendar?.connected);
+  const lastSyncedAt = state.settings?.googleCalendar?.lastSyncedAt;
+  const syncedEventsCount = state.syncedEvents?.length ?? 0;
 
   const syncNow = async () => {
     setLoading(true);
@@ -206,9 +208,20 @@ function DailyEvents() {
           {loading ? 'Syncing...' : 'Sync Now'}
         </button>
       </div>
+      {connected ? (
+        <p className="text-[11px] text-[var(--text-muted)]">
+          {lastSyncedAt
+            ? `Last sync ${new Date(lastSyncedAt).toLocaleString()} - ${syncedEventsCount} synced event${syncedEventsCount === 1 ? '' : 's'}`
+            : 'Google Calendar connected - not synced yet'}
+        </p>
+      ) : null}
       {error ? <p className="text-[11px] text-red-500">{error}</p> : null}
       {!events.length ? (
-        <p className="text-xs text-[var(--text-muted)]">No events for today.</p>
+        <p className="text-xs text-[var(--text-muted)]">
+          {connected && syncedEventsCount > 0
+            ? `No events for today. ${syncedEventsCount} synced event${syncedEventsCount === 1 ? '' : 's'} are scheduled on other days.`
+            : 'No events for today.'}
+        </p>
       ) : (
         <div className="space-y-2">
           {events.map((event) => (

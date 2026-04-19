@@ -36,10 +36,30 @@ export function OSProvider({ children, auth }) {
   const update = useCallback((fn) => setState((prev) => fn(prev)), [setState]);
   const resetToSeed = () => setState(SEED_STATE);
 
+  const toDateKey = (value) => {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    const yyyy = String(d.getFullYear());
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const sortEventsByTime = (events = []) =>
+    [...events].sort((a, b) => {
+      const aMin = a.hour * 60 + (a.minute ?? 0);
+      const bMin = b.hour * 60 + (b.minute ?? 0);
+      return aMin - bMin;
+    });
+
   const eventToDisplayBlock = (event) => {
     const start = new Date(event.start_time);
+    if (Number.isNaN(start.getTime())) return null;
+
     const end = new Date(event.end_time);
-    const duration = Math.max(15, Math.round((end - start) / 60000));
+    const rawDuration = Number.isNaN(end.getTime()) ? 60 : Math.round((end - start) / 60000);
+    const duration = Math.max(15, rawDuration > 0 ? rawDuration : 60);
+
     return {
       id: `google-${event.google_event_id}`,
       label: event.summary || '(No title)',
@@ -496,6 +516,17 @@ export function OSProvider({ children, auth }) {
   const selectors = {
     inbox: () => (state.capture ?? []).filter((c) => !c.processed),
     todayMetric: () => state.metrics?.[todayKey()] ?? makeMetricLog(),
+    dayEvents: (date = todayKey()) => {
+      const localEvents = resolveDay(date, state.cycles ?? {}, state.overrides ?? {}, parseKey(state.cycleStartDate))
+        .map((event) => ({ ...event, source: event.source || 'template' }));
+
+      const externalEvents = (state.syncedEvents ?? [])
+        .filter((event) => toDateKey(event.start_time) === date)
+        .map(eventToDisplayBlock)
+        .filter(Boolean);
+
+      return sortEventsByTime([...localEvents, ...externalEvents]);
+    },
     dailyBriefing: (date = todayKey()) => {
       const briefing = resolvePhysicalBriefing(
         date,
@@ -506,24 +537,7 @@ export function OSProvider({ children, auth }) {
         state.settings?.energyLowThreshold ?? 4,
       );
 
-      const localEvents = resolveDay(date, state.cycles ?? {}, state.overrides ?? {}, parseKey(state.cycleStartDate))
-        .map((event) => ({ ...event, source: event.source || 'template' }));
-
-      const externalEvents = (state.syncedEvents ?? [])
-        .filter((event) => {
-          const start = new Date(event.start_time);
-          const yyyy = String(start.getFullYear());
-          const mm = String(start.getMonth() + 1).padStart(2, '0');
-          const dd = String(start.getDate()).padStart(2, '0');
-          return `${yyyy}-${mm}-${dd}` === date;
-        })
-        .map(eventToDisplayBlock);
-
-      const mergedEvents = [...localEvents, ...externalEvents].sort((a, b) => {
-        const aMin = a.hour * 60 + (a.minute ?? 0);
-        const bMin = b.hour * 60 + (b.minute ?? 0);
-        return aMin - bMin;
-      });
+      const mergedEvents = selectors.dayEvents(date);
 
       return { ...briefing, mergedEvents };
     },
