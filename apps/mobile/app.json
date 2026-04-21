@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Lifestyle OS",
+    "slug": "lifestyle-os",
+    "scheme": "lifestyleos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sqnder0.lifestyleos",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.sqnder0.lifestyleos",
+      "versionCode": 1
+    },
+    "extra": {
+      "legal": {
+        "privacyPolicyUrl": "https://example.com/privacy",
+        "termsUrl": "https://example.com/terms"
+      }
+    }
+  }
+}

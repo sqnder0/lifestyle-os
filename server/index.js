@@ -474,6 +474,29 @@ app.put('/api/state', authMiddleware, async (req, res) => {
   }
 });
 
+app.post('/api/capture', authMiddleware, async (req, res) => {
+  const content = String(req.body?.content ?? '').trim();
+  const createdAt = req.body?.createdAt ?? null;
+  const status = req.body?.status === 'processed' ? 'processed' : 'open';
+
+  if (!content) {
+    return res.status(400).json({ error: 'content is required.' });
+  }
+
+  try {
+    const inserted = await query(
+      `insert into capture_inbox (user_id, content, created_at, status)
+       values ($1, $2, coalesce($3::timestamptz, now()), $4)
+       returning id, content, created_at, status`,
+      [req.userId, content, createdAt, status],
+    );
+
+    return res.status(201).json({ item: inserted.rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/google/status', authMiddleware, async (req, res) => {
   try {
     const profile = await query(

@@ -2,6 +2,10 @@
   "name": "lifestyle-os",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "api": "node server/index.js",
     "dev": "vite",
@@ -10,7 +14,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview",
-    "start": "NODE_ENV=production node server/index.js"
+    "start": "NODE_ENV=production node server/index.js",
+    "mobile": "npm run start --workspace @lifestyle-os/mobile",
+    "mobile:ios": "npm run ios --workspace @lifestyle-os/mobile",
+    "mobile:android": "npm run android --workspace @lifestyle-os/mobile"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",

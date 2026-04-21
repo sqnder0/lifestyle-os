@@ -9,11 +9,13 @@ Current architecture uses Google OAuth for authentication and an Express + Postg
 ## 2. Stack and runtime
 
 - Frontend: React 18 + Vite 5
+- Mobile: Expo (React Native)
 - Styling: Tailwind CSS + CSS variable design tokens
 - Icons: lucide-react
 - State: React Context + custom hooks
 - Primary persistence: Express API + PostgreSQL (`pg`)
 - Auth: Google OAuth + JWT session tokens
+- Shared domain logic: `packages/shared` (cycle engine + schema)
 
 ## 3. Setup and run
 
@@ -48,6 +50,12 @@ npm run api
 npm run dev:full
 ```
 
+### Mobile app (Expo)
+
+```bash
+npm run mobile
+```
+
 ### Production build
 
 ```bash
@@ -80,6 +88,10 @@ The project requires frontend API configuration and backend OAuth/Postgres env v
 
 - `VITE_API_URL` (optional, defaults to `/api` and used by `src/lib/api.js`)
 
+### Mobile env vars
+
+- `EXPO_PUBLIC_API_URL` (required for native clients to reach the API)
+
 ### Backend env vars
 
 - `API_PORT` (or `PORT` in production)
@@ -100,6 +112,21 @@ index.html
 package.json
 README.md
 INSTRUCTIONS.md
+apps/
+  mobile/
+    App.js
+    app.json
+    index.js
+    src/
+      hooks/
+        useMobileAuth.js
+      lib/
+        api.js
+packages/
+  shared/
+    src/
+      cycleEngine.js
+      schema.js
 server/
   index.js
   auth.js
@@ -197,7 +224,7 @@ Note: `cmd` also works with Ctrl.
 
 ## 7. State model (source of truth)
 
-Primary seed shape is `SEED_STATE` in `src/utils/schema.js`.
+Primary seed shape is `SEED_STATE` in `packages/shared/src/schema.js` and is re-exported by `src/utils/schema.js`.
 
 Top-level state keys currently include:
 
@@ -261,7 +288,7 @@ Important: the frontend auth token is JWT-based and used across both state sync 
 
 ## 10. Cycle engine rules
 
-Implemented in `src/utils/cycleEngine.js`.
+Implemented in `packages/shared/src/cycleEngine.js` and re-exported by `src/utils/cycleEngine.js`.
 
 Core behavior:
 

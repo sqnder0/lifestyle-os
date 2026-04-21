@@ -1,0 +1,12 @@
+{
+  "name": "@lifestyle-os/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./cycleEngine": "./src/cycleEngine.js",
+    "./schema": "./src/schema.js"
+  }
+}
