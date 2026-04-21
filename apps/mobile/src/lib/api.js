@@ -1,4 +1,5 @@
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000/api';
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL || 'https://lifestyle.sqnder.dev/api';
 
 async function request(path, { method = 'GET', token, body, timeoutMs = 15000 } = {}) {
   const controller = new AbortController();

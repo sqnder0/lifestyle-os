@@ -9,7 +9,7 @@ It assumes you are new to app publishing and starts from zero.
 
 ## 1. What You Are Publishing
 
-This repository already contains a mobile app built with Expo in [apps/mobile](apps/mobile).
+This repository already contains a mobile app built with Expo SDK 54 in [apps/mobile](apps/mobile).
 
 The most important files for publishing are:
 
@@ -68,10 +68,16 @@ From repository root:
 npm install
 ```
 
-Verify mobile app config resolves:
+Verify the mobile app config resolves:
 
 ```bash
 npm exec --workspace @lifestyle-os/mobile -- expo config --json
+```
+
+If you are updating dependencies, use the mobile workspace command so Expo installs the SDK 54-compatible packages in the correct place:
+
+```bash
+npm exec --workspace @lifestyle-os/mobile -- expo install --fix
 ```
 
 ## 5. Configure Environment Variables
