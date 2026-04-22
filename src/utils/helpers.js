@@ -81,7 +81,13 @@ export const energyColor = (n) => {
 
 /** Average of an array of numbers (ignores nulls) */
 export const avg = (arr) => {
-  const vals = arr.filter((v) => v != null);
+  const vals = arr
+    .map((v) => {
+      if (v == null || v === '') return null;
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? n : null;
+    })
+    .filter((v) => v != null);
   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 };
 
