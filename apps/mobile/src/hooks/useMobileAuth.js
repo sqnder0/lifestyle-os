@@ -12,9 +12,19 @@ const TOKEN_KEY = 'lifestyle-os-mobile-token';
 function parseAuthRedirect(url) {
   const parsed = Linking.parse(url);
   const queryParams = parsed.queryParams || {};
+
+  const hash = typeof url === 'string' && url.includes('#') ? url.slice(url.indexOf('#') + 1) : '';
+  const hashParams = new URLSearchParams(hash);
+
   return {
-    token: typeof queryParams.auth_token === 'string' ? queryParams.auth_token : null,
-    error: typeof queryParams.auth_error === 'string' ? queryParams.auth_error : null,
+    token:
+      (typeof queryParams.auth_token === 'string' ? queryParams.auth_token : null)
+      || hashParams.get('auth_token')
+      || null,
+    error:
+      (typeof queryParams.auth_error === 'string' ? queryParams.auth_error : null)
+      || hashParams.get('auth_error')
+      || null,
   };
 }
 

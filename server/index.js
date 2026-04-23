@@ -74,14 +74,94 @@ async function ensureSchema() {
 function resolveRedirectTarget(req, redirect) {
   const fallback = clientOrigin || `${req.protocol}://${req.get('host')}`;
   if (!redirect) return fallback;
+
   try {
     const target = new URL(redirect);
+    const protocol = target.protocol.replace(':', '').toLowerCase();
+
+    if (protocol && protocol !== 'http' && protocol !== 'https') {
+      // Mobile deep links (exp://, exps://, lifestyleos://, etc.) should round-trip as-is.
+      return redirect;
+    }
+
     const allowedOrigins = new Set([
       clientOrigin,
       req.headers.origin,
       `${req.protocol}://${req.get('host')}`,
     ].filter(Boolean));
+
     return allowedOrigins.has(target.origin) ? redirect : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function isCustomSchemeRedirect(redirect) {
+  try {
+    const target = new URL(redirect);
+    const protocol = target.protocol.replace(':', '').toLowerCase();
+    return protocol && protocol !== 'http' && protocol !== 'https';
+  } catch {
+    return false;
+  }
+}
+
+function redirectWithAppHandoff(res, redirect) {
+  if (!isCustomSchemeRedirect(redirect)) {
+    return res.redirect(302, redirect);
+  }
+
+  const safeUrl = escapeHtml(redirect);
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Returning to Lifestyle OS</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }
+    .wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    .card { width: 100%; max-width: 420px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    p { margin: 0 0 16px; color: #475569; font-size: 14px; line-height: 1.4; }
+    a { display: inline-block; padding: 10px 14px; border-radius: 8px; text-decoration: none; background: #0f172a; color: #ffffff; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Returning to the app...</h1>
+      <p>If Lifestyle OS did not open automatically, tap the button below.</p>
+      <a href="${safeUrl}">Open Lifestyle OS</a>
+    </div>
+  </div>
+  <script>
+    window.location.replace('${safeUrl}');
+  </script>
+</body>
+</html>`;
+
+  res.status(200).type('html').send(html);
+}
+
+function resolveRedirectFromState(req, stateToken, fallbackRedirect = null) {
+  const fallback = resolveRedirectTarget(req, fallbackRedirect);
+  if (!stateToken) {
+    return fallback;
+  }
+
+  try {
+    const payload = verifyAuthState(String(stateToken));
+    return payload?.redirect || fallback;
   } catch {
     return fallback;
   }
@@ -191,10 +271,10 @@ app.get('/api/auth/google/start', async (req, res) => {
 app.get('/api/auth/google/callback', async (req, res) => {
   const { code, state, error } = req.query || {};
   if (error) {
-    const redirect = resolveRedirectTarget(req, req.query.redirect);
+    const redirect = resolveRedirectFromState(req, state, req.query.redirect);
     const url = new URL(redirect);
     url.hash = `auth_error=${encodeURIComponent(String(error))}`;
-    return res.redirect(url.toString());
+    return redirectWithAppHandoff(res, url.toString());
   }
 
   if (!code || !state) {
@@ -258,11 +338,12 @@ app.get('/api/auth/google/callback', async (req, res) => {
     const token = signToken(user.id);
     const url = new URL(redirect);
     url.hash = `auth_token=${encodeURIComponent(token)}`;
-    return res.redirect(url.toString());
+    return redirectWithAppHandoff(res, url.toString());
   } catch (authError) {
-    const url = new URL(redirect || resolveRedirectTarget(req, null));
+    const fallbackRedirect = resolveRedirectFromState(req, state, null);
+    const url = new URL(redirect || fallbackRedirect);
     url.hash = `auth_error=${encodeURIComponent(authError.message || 'OAuth failed')}`;
-    return res.redirect(url.toString());
+    return redirectWithAppHandoff(res, url.toString());
   }
 });
 
