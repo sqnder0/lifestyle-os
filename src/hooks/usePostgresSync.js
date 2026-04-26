@@ -117,6 +117,17 @@ function mapFromServer(seedState, payload) {
     }));
   }
 
+  if (Array.isArray(payload.reviews)) {
+    next.reviews = Object.fromEntries(payload.reviews.map((row) => [row.week_key, {
+      id: row.id,
+      weekKey: row.week_key,
+      answers: typeof row.answers === 'string' ? JSON.parse(row.answers) : (row.answers ?? {}),
+      rating: row.rating ?? null,
+      completedAt: row.completed_at,
+      createdAt: row.created_at,
+    }]));
+  }
+
   return next;
 }
 
@@ -177,9 +188,17 @@ function toServerPayload(state) {
     }
   }
 
+  const reviews = Object.values(state.reviews ?? {}).map((review) => ({
+    id: review.id ?? uid(),
+    week_key: review.weekKey,
+    answers: review.answers ?? {},
+    rating: review.rating ?? null,
+    completed_at: review.completedAt,
+  }));
+
   // Synced Google events are owned by /api/google/sync and can be large.
   // Keep /api/state focused on editable app data to avoid oversized PUT payloads.
-  return { profile, captureInbox, metrics, cycleTemplates, habits, principles };
+  return { profile, captureInbox, metrics, cycleTemplates, habits, principles, reviews };
 }
 
 export function usePostgresSync({ initialState, token }) {

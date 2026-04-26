@@ -141,6 +141,19 @@ create table if not exists principles (
 );
 create index if not exists principles_user_order_idx on principles(user_id, principle_order asc, created_at asc);
 
+create table if not exists weekly_reviews (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth_users(id) on delete cascade,
+  week_key text not null,
+  answers jsonb not null default '{}'::jsonb,
+  rating int,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(user_id, week_key)
+);
+create index if not exists weekly_reviews_user_week_idx on weekly_reviews(user_id, week_key desc);
+
 create or replace function set_updated_at()
 returns trigger as $$
 begin
@@ -175,4 +188,8 @@ for each row execute procedure set_updated_at();
 
 drop trigger if exists principles_set_updated_at on principles;
 create trigger principles_set_updated_at before update on principles
+for each row execute procedure set_updated_at();
+
+drop trigger if exists weekly_reviews_set_updated_at on weekly_reviews;
+create trigger weekly_reviews_set_updated_at before update on weekly_reviews
 for each row execute procedure set_updated_at();

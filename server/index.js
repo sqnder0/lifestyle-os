@@ -388,7 +388,7 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 
 app.get('/api/state', authMiddleware, async (req, res) => {
   try {
-    const [profile, capture, metrics, cycleTemplates, syncedEvents, habits, principles] = await Promise.all([
+    const [profile, capture, metrics, cycleTemplates, syncedEvents, habits, principles, reviews] = await Promise.all([
       query(
         `select first_name, username, settings, onboarded, google_email, google_access_token, google_refresh_token, google_token_expires_at, google_last_synced_at
          from profiles where id = $1`,
@@ -412,6 +412,13 @@ app.get('/api/state', authMiddleware, async (req, res) => {
          order by principle_order asc, created_at asc`,
         [req.userId],
       ),
+      query(
+        `select id, week_key, answers, rating, completed_at, created_at
+         from weekly_reviews
+         where user_id = $1
+         order by week_key desc`,
+        [req.userId],
+      ),
     ]);
 
     return res.json({
@@ -422,6 +429,7 @@ app.get('/api/state', authMiddleware, async (req, res) => {
       syncedEvents: syncedEvents.rows,
       habits: habits.rows,
       principles: principles.rows,
+      reviews: reviews.rows,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -439,6 +447,7 @@ app.put('/api/state', authMiddleware, async (req, res) => {
     syncedEvents = [],
     habits = [],
     principles = [],
+    reviews = [],
   } = payload;
 
   const client = await getClient();
@@ -541,6 +550,15 @@ app.put('/api/state', authMiddleware, async (req, res) => {
       );
     }
 
+    await client.query('delete from weekly_reviews where user_id = $1', [req.userId]);
+    for (const review of reviews) {
+      await client.query(
+        `insert into weekly_reviews (id, user_id, week_key, answers, rating, completed_at)
+         values ($1, $2, $3, $4::jsonb, $5, coalesce($6::timestamptz, now()))`,
+        [review.id, req.userId, review.week_key, JSON.stringify(review.answers ?? {}), review.rating ?? null, review.completed_at],
+      );
+    }
+
     await client.query('commit');
     return res.json({ ok: true });
   } catch (error) {
@@ -573,6 +591,88 @@ app.post('/api/capture', authMiddleware, async (req, res) => {
     );
 
     return res.status(201).json({ item: inserted.rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/reviews', authMiddleware, async (req, res) => {
+  try {
+    const result = await query(
+      `select id, week_key, answers, rating, completed_at, created_at
+       from weekly_reviews
+       where user_id = $1
+       order by week_key desc`,
+      [req.userId],
+    );
+    return res.json({ reviews: result.rows });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/reviews', authMiddleware, async (req, res) => {
+  const { week_key, answers, rating } = req.body || {};
+
+  if (!week_key) {
+    return res.status(400).json({ error: 'week_key is required.' });
+  }
+
+  try {
+    const inserted = await query(
+      `insert into weekly_reviews (user_id, week_key, answers, rating, completed_at)
+       values ($1, $2, $3::jsonb, $4, now())
+       on conflict (user_id, week_key)
+       do update set answers = excluded.answers, rating = excluded.rating, completed_at = now(), updated_at = now()
+       returning id, week_key, answers, rating, completed_at, created_at`,
+      [req.userId, week_key, JSON.stringify(answers ?? {}), rating ?? null],
+    );
+
+    return res.status(201).json({ review: inserted.rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/reviews/:weekKey', authMiddleware, async (req, res) => {
+  const { weekKey } = req.params;
+  const { answers, rating } = req.body || {};
+
+  try {
+    const result = await query(
+      `update weekly_reviews
+       set answers = coalesce($3::jsonb, answers),
+           rating = coalesce($4, rating),
+           completed_at = coalesce($5::timestamptz, completed_at)
+       where user_id = $1 and week_key = $2
+       returning id, week_key, answers, rating, completed_at, created_at`,
+      [req.userId, weekKey, JSON.stringify(answers ?? {}), rating ?? null, new Date().toISOString()],
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ error: 'Review not found.' });
+    }
+
+    return res.json({ review: result.rows[0] });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/reviews/:weekKey', authMiddleware, async (req, res) => {
+  const { weekKey } = req.params;
+
+  try {
+    const result = await query(
+      'delete from weekly_reviews where user_id = $1 and week_key = $2',
+      [req.userId, weekKey],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Review not found.' });
+    }
+
+    return res.json({ ok: true });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
