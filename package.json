@@ -14,10 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview",
-    "start": "NODE_ENV=production node server/index.js",
-    "mobile": "npm run start --workspace @lifestyle-os/mobile",
-    "mobile:ios": "npm run ios --workspace @lifestyle-os/mobile",
-    "mobile:android": "npm run android --workspace @lifestyle-os/mobile"
+    "start": "NODE_ENV=production node server/index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",

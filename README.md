@@ -16,7 +16,6 @@ For production deployment, use the included [Dockerfile](Dockerfile). It builds 
 - Google OAuth sign-in with calendar access
 - Optimistic sync to the API with background persistence
 - React + Vite frontend with Tailwind styling
-- Expo mobile workspace foundation for iOS and Android
 
 ## Architecture
 
@@ -31,14 +30,7 @@ For production deployment, use the included [Dockerfile](Dockerfile). It builds 
 ### Shared package
 
 - `packages/shared` contains reusable cycle engine + schema logic
-- Web re-exports from `src/utils/*` so existing imports keep working
-- Mobile imports the same shared logic via `@lifestyle-os/shared`
-
-### Mobile
-
-- Expo app in `apps/mobile`
-- Secure token storage via `expo-secure-store`
-- Google auth session kickoff against existing Express API
+- App imports shared logic via `src/utils/*`
 
 ### Backend
 
@@ -118,35 +110,6 @@ npm run dev
 - `npm run dev:full` - run frontend and API together
 - `npm run build` - build the frontend for production
 - `npm start` - start the production server after building the frontend
-- `npm run mobile` - start Expo for iOS/Android
-- `npm run mobile:ios` - open iOS simulator flow
-- `npm run mobile:android` - open Android emulator flow
-
-## Mobile Quick Start
-
-1. Install dependencies from repository root.
-
-```bash
-npm install
-```
-
-2. Start API in one terminal.
-
-```bash
-npm run api
-```
-
-3. Start Expo in another terminal.
-
-```bash
-npm run mobile
-```
-
-4. Set `EXPO_PUBLIC_API_URL` as needed:
-
-- iOS simulator: `http://localhost:4000/api`
-- Android emulator: `http://10.0.2.2:4000/api`
-- Physical device: `http://<lan-ip>:4000/api`
 
 ## Production Deployment
 
