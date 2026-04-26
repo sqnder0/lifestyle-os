@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useKeyboard } from './hooks/useKeyboard';
 import CommandPalette from './components/modules/CommandPalette';
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { OSProvider, useOS } from './context/OSContext';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useSupabaseAuth } from './hooks/useSupabaseAuth';
@@ -504,6 +505,9 @@ function AppShell() {
         onDarkToggle={toggleDark}
         onClose={() => setDrawerOpen(false)}
       />
+
+      {/* PWA Install Prompt */}
+      <PWAInstallPrompt />
     </div>
   );
 }
